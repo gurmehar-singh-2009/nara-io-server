@@ -1,0 +1,5 @@
+[build]
+target = "index.html"
+
+[serve]
+headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp", "Content-Security-Policy" = "worker-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; connect-src 'self' ws: wss:;" }
