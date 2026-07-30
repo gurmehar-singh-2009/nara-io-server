@@ -31,14 +31,12 @@ fn draw_grid(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // 1. Derivatives MUST be called at the top level (uniform control flow)
     let world_fwidth = fwidth(in.world_pos);
     let grid_line_aa = max(world_fwidth.x, world_fwidth.y);
 
     let uv_fwidth = fwidth(in.uv);
     let delta = max(uv_fwidth.x, uv_fwidth.y);
 
-    // 2. Shape 2: Background Grid
     if (in.shape_type == 2u) {
         let cell_size = in.extra_param;
         return draw_grid(
@@ -51,7 +49,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         );
     }
 
-    // 3. Shape 0: Circle
     if (in.shape_type == 0u) {
         let dist_circle = length(in.uv);
         let alpha = 1.0 - smoothstep(1.0 - delta, 1.0 + delta, dist_circle);
@@ -66,7 +63,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(final_color.rgb, final_color.a * alpha);
     }
 
-    // 4. Shape 1: Rectangle
     if (in.shape_type == 1u) {
         let dist_box = max(abs(in.uv.x), abs(in.uv.y));
         let alpha = 1.0 - smoothstep(1.0 - delta, 1.0 + delta, dist_box);
@@ -81,28 +77,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(final_color.rgb, final_color.a * alpha);
     }
 
-    // 5. Shape 3: Regular N-Sided Polygon
-    // 5. Shape 3: Regular N-Sided Polygon
-        if (in.shape_type == 3u && in.sides >= 3u) {
-            let sides_f = f32(in.sides);
-            let angle = atan2(in.uv.y, in.uv.x);
-            let slice = (2.0 * PI) / sides_f;
+    if (in.shape_type == 3u && in.sides >= 3u) {
+        let sides_f = f32(in.sides);
+        let angle = atan2(in.uv.y, in.uv.x);
+        let slice = (2.0 * PI) / sides_f;
 
-            // Apothem factor scales outer vertices to fit within unit radius (1.0)
-            let apothem = cos(PI / sides_f);
-            let dist_poly = (cos(floor(0.5 + angle / slice) * slice - angle) * length(in.uv)) / apothem;
+        let apothem = cos(PI / sides_f);
+        let dist_poly = (cos(floor(0.5 + angle / slice) * slice - angle) * length(in.uv)) / apothem;
 
-            let alpha = 1.0 - smoothstep(1.0 - delta, 1.0 + delta, dist_poly);
-            if (alpha < 0.001) {
-                discard;
-            }
-
-            let border_uv_width = in.border_thickness * delta;
-            let border_mix = smoothstep(1.0 - border_uv_width - delta, 1.0 - border_uv_width + delta, dist_poly);
-
-            let final_color = mix(in.fill_color, in.border_color, border_mix);
-            return vec4<f32>(final_color.rgb, final_color.a * alpha);
+        let alpha = 1.0 - smoothstep(1.0 - delta, 1.0 + delta, dist_poly);
+        if (alpha < 0.001) {
+            discard;
         }
+
+        let border_uv_width = in.border_thickness * delta;
+        let border_mix = smoothstep(1.0 - border_uv_width - delta, 1.0 - border_uv_width + delta, dist_poly);
+
+        let final_color = mix(in.fill_color, in.border_color, border_mix);
+        return vec4<f32>(final_color.rgb, final_color.a * alpha);
+    }
 
     return in.fill_color;
 }
