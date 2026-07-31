@@ -1,4 +1,5 @@
 use bytemuck::{Pod, Zeroable};
+use glyphon::{Attrs, Color, FontSystem, Metrics};
 use wgpu::{BufferAddress, VertexAttribute, VertexBufferLayout, VertexStepMode};
 
 #[repr(C)]
@@ -75,4 +76,42 @@ pub struct CameraUniform {
     pub camera_pos: [f32; 2],
     pub zoom: f32,
     pub aspect_ratio: f32,
+}
+
+pub struct TextComponent {
+    pub buffer: glyphon::Buffer,
+    pub color: Color,
+    pub offset: [f32; 2],
+}
+
+impl TextComponent {
+    pub fn new(font_system: &mut FontSystem, initial_text: &str) -> Self {
+        let mut buffer = glyphon::Buffer::new(font_system, Metrics::new(16.0, 20.0));
+
+        buffer.set_text(
+            initial_text,
+            &Attrs::new().family(glyphon::Family::SansSerif),
+            glyphon::Shaping::Basic,
+            None,
+        );
+        buffer.shape_until_scroll(font_system, false);
+
+        Self {
+            buffer,
+            color: Color::rgb(0, 0, 0),
+            offset: [0.0, -30.0],
+        }
+    }
+
+    /// call this ONLY when the text actually changes (eg player takes damage)
+    pub fn update_text(&mut self, font_system: &mut FontSystem, new_text: &str) {
+        self.buffer.set_text(
+            new_text,
+            &Attrs::new().family(glyphon::Family::SansSerif),
+            glyphon::Shaping::Basic,
+            None,
+        );
+
+        self.buffer.shape_until_scroll(font_system, false);
+    }
 }

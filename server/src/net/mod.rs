@@ -1,5 +1,5 @@
 use ed25519_dalek::Signer;
-use std::marker::ConstParamTy_;
+use std::{marker::ConstParamTy_, time::UNIX_EPOCH};
 
 use chacha20poly1305::{Key, KeyInit, Nonce, aead::Aead};
 use getrandom::{SysRng, rand_core::UnwrapErr};
@@ -97,7 +97,13 @@ impl ClientConnection<{ ConnectionState::Handshaking }> {
         handshake[..32].copy_from_slice(&my_public.to_bytes());
         handshake[32..96].copy_from_slice(&public_key_signature.to_bytes());
 
-        let handshake_packet = ClientPacket::Handshake(HandshakePacket(handshake));
+        let handshake_packet = ClientPacket::Handshake(HandshakePacket::new(
+            handshake,
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        ));
         // self.send_tx
         //     .send(handshake_packet)
         //     .context(ChannelEntrySnafu { id: self.id })?;

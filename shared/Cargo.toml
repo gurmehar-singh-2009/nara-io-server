@@ -8,3 +8,4 @@ bytes = { workspace = true }
 bitcode = { workspace = true }
 snafu = { workspace = true }
 x25519-dalek = { workspace = true }
+obfstr = "0.4.6"

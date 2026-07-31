@@ -107,7 +107,9 @@ async fn main() -> Result<(), String> {
                         // TODO: Blacklist IPs that attempt to connect without handshaking first.
                         ServerPacket::Handshake(payload) => client_connection
                             .respond_handshake(
-                                &PublicKey::from(<[u8; 32]>::try_from(&payload.0[..32]).unwrap()),
+                                &PublicKey::from(
+                                    <[u8; 32]>::try_from(&payload.handshake[..32]).unwrap(),
+                                ),
                                 &signing_key,
                             )
                             .unwrap(),
