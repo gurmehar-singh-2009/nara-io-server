@@ -1,0 +1,22 @@
+target/
+node_modules/
+vendor/
+
+*.toml
+*.yaml
+*.yml
+*.json
+*.lock
+
+*.md
+*.txt
+*.adoc
+docs/
+
+# tests/
+# benches/
+
+.git/
+.idea/
+.vscode/
+.DS_Store

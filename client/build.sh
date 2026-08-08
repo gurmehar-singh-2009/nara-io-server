@@ -8,7 +8,6 @@ trunk build --release
 
 DIST_DIR="./dist"
 
-# Ensure tools exist
 if ! command -v wasm-snip &> /dev/null; then
     echo "Error: wasm-snip is not installed. Run: cargo install wasm-snip"
     exit 1
@@ -38,7 +37,6 @@ for WASM_FILE in "$DIST_DIR"/*.wasm; do
             --reroute-calls \
             "$WASM_FILE.snipped" -o "$WASM_FILE"
 
-        # Cleanup temporary file
         rm "$WASM_FILE.snipped"
 
         echo "Successfully optimized: $WASM_FILE"

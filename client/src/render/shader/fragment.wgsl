@@ -4,13 +4,13 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) world_pos: vec2<f32>,
-
     @location(2) @interpolate(flat) shape_type: u32,
     @location(3) @interpolate(flat) sides: u32,
     @location(4) @interpolate(flat) fill_color: vec4<f32>,
     @location(5) @interpolate(flat) border_color: vec4<f32>,
     @location(6) @interpolate(flat) border_thickness: f32,
     @location(7) @interpolate(flat) extra_param: f32,
+    @location(8) @interpolate(flat) size: vec2<f32>,
 };
 
 fn draw_grid(
@@ -19,14 +19,25 @@ fn draw_grid(
     line_width: f32,
     bg_color: vec4<f32>,
     line_color: vec4<f32>,
-    line_aa: f32
+    line_alpha: f32,
+    line_aa: f32,
 ) -> vec4<f32> {
     let grid_coord = abs(fract(world_pos / cell_size - 0.5) - 0.5) * cell_size;
-    let dist_to_line = min(grid_coord.x, grid_coord.y);
 
     let half_width = line_width * 0.5;
-    let line_factor = 1.0 - smoothstep(half_width - line_aa, half_width + line_aa, dist_to_line);
-    return mix(bg_color, line_color, line_factor);
+    let aa = line_aa;
+
+    let factor_x = 1.0 - smoothstep(half_width - aa, half_width + aa, grid_coord.x);
+    let factor_y = 1.0 - smoothstep(half_width - aa, half_width + aa, grid_coord.y);
+
+    let line_factor = max(factor_x, factor_y);
+
+    let factor = line_factor * line_alpha;
+
+    return vec4<f32>(
+        mix(bg_color.rgb, line_color.rgb, factor),
+        1.0,
+    );
 }
 
 @fragment
@@ -45,9 +56,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             in.border_thickness,
             in.fill_color,
             in.border_color,
+            in.border_color.a,
             grid_line_aa,
         );
     }
+
+    let min_size = min(in.size.x, in.size.y);
+    let border_uv_width = in.border_thickness * (2.0 / min_size);
 
     if (in.shape_type == 0u) {
         let dist_circle = length(in.uv);
@@ -56,7 +71,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             discard;
         }
 
-        let border_uv_width = in.border_thickness * delta;
         let border_mix = smoothstep(1.0 - border_uv_width - delta, 1.0 - border_uv_width + delta, dist_circle);
 
         let final_color = mix(in.fill_color, in.border_color, border_mix);
@@ -70,7 +84,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             discard;
         }
 
-        let border_uv_width = in.border_thickness * delta;
         let border_mix = smoothstep(1.0 - border_uv_width - delta, 1.0 - border_uv_width + delta, dist_box);
 
         let final_color = mix(in.fill_color, in.border_color, border_mix);
@@ -90,7 +103,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             discard;
         }
 
-        let border_uv_width = in.border_thickness * delta;
         let border_mix = smoothstep(1.0 - border_uv_width - delta, 1.0 - border_uv_width + delta, dist_poly);
 
         let final_color = mix(in.fill_color, in.border_color, border_mix);

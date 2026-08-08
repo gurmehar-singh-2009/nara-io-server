@@ -1,6 +1,6 @@
-/* src/api.rs */
+// src/api.rs
 
-use crate::net::ip_lookup::{lookup::*, LookupResult};
+use crate::net::ip_lookup::{LookupResult, lookup::*};
 
 #[derive(Debug, Copy, Clone)]
 pub enum LookupProvider {

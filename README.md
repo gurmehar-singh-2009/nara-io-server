@@ -1,5 +1,7 @@
 # nara.io
 
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct.svg)](https://stand-with-ukraine.pp.ua)
+
 A prototype diep.io clone game.
 
 Features:
@@ -54,7 +56,8 @@ ai was used for converting formats like json to toml, and some feature suggestio
 i'm refusing to use it for anything else since i want to learn from this project.
 however, i did use ai to debug certain parts, below is a list i will keep updated with files ai has contaminated:
 - /client/src/render/shader/fragment.wgsl
+- /client/bin/ - abused gemini to try some stuff out
 
--# note to self: make sure to differ the hosted version from what's hosted here (in terms of packet chaffing) and some other stuff (otherwise its really easy to make a hack).
--# im at a disadvantage since now everyone can see what mechanisms i use to protect, etc.
--# also another note: make sure to redeploy every 30m-1h
+note to self: make sure to differ the hosted version from what's hosted here (in terms of packet chaffing) and some other stuff (otherwise its really easy to make a hack).
+im at a disadvantage since now everyone can see what mechanisms i use to protect, etc.
+also another note: make sure to redeploy every 30m-1h to refresh everything - keep a server snapshot before restart though to reset players based on ip

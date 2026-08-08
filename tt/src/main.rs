@@ -1,8 +1,11 @@
-use mlua::thread::ThreadStatus;
-use mlua::{Function, Lua, Thread, UserData, UserDataFields, UserDataMethods};
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+
+use mlua::{
+    thread::ThreadStatus, Function, Lua, Thread, UserData, UserDataFields, UserDataMethods,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EntityId(usize);
@@ -19,12 +22,15 @@ impl Entities {
         self.health.push(100);
         EntityId(self.speed.len() - 1)
     }
+
     fn speed_of(&self, id: EntityId) -> f32 {
         self.speed[id.0]
     }
+
     fn set_speed(&mut self, id: EntityId, v: f32) {
         self.speed[id.0] = v;
     }
+
     fn spawn_bullet_for(&mut self, id: EntityId) {
         println!("  -> entity {:?} spawned a bullet", id);
     }
@@ -94,11 +100,12 @@ impl Scheduler {
     }
 }
 
-fn register_commands(lua: &Lua) -> mlua::Result<Rc<RefCell<HashMap<String, Function>>>> {
-    let commands: Rc<RefCell<HashMap<String, Function>>> = Rc::new(RefCell::new(HashMap::new()));
+fn register_commands(lua: &Lua) -> mlua::Result<Arc<Mutex<HashMap<String, Function>>>> {
+    let commands: Arc<Mutex<HashMap<String, Function>>> = Arc::new(Mutex::new(HashMap::new()));
     let reg = commands.clone();
     let register_fn = lua.create_function(move |_, (name, func): (String, Function)| {
-        reg.borrow_mut().insert(name, func);
+        reg.lock().unwrap().insert(name, func);
+        // reg.borrow_mut().insert(name, func);
         Ok(())
     })?;
     let table = lua.create_table()?;
@@ -170,7 +177,7 @@ fn main() -> mlua::Result<()> {
     lua.load(commands_src).exec()?;
 
     println!("--- dispatching /heal ---");
-    let heal_fn = commands.borrow().get("heal").unwrap().clone();
+    let heal_fn = commands.lock().unwrap().get("heal").unwrap().clone();
     heal_fn.call::<()>(LuaPlayer(player_id))?;
 
     println!("all good");

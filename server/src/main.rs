@@ -1,30 +1,37 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 #![feature(yeet_expr)] // not even syntax highlighting supports this :(
+#![feature(try_trait_v2_yeet)]
 #![feature(adt_const_params)]
 #![feature(const_param_ty_trait)]
 #![feature(stmt_expr_attributes)]
 #![allow(incomplete_features)]
 
+#[allow(clippy::module_inception)] // i dont think its a big deal
 use std::sync::Arc;
 
-use futures_util::{SinkExt, StreamExt};
-use tokio::net::TcpListener;
-use tokio_tungstenite::{accept_async_with_config, tungstenite::Result};
-
-use dashmap::DashMap;
 use ed25519_dalek::SigningKey;
-use shared::ServerPacket;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+use futures_util::{SinkExt, StreamExt};
+use shared::packets::{
+    PACKET_SEED, Packet, handshake::HandshakePacket, server_bound::SpawnReqPacket,
+};
+use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
+use tokio_tungstenite::{accept_async_with_config, tungstenite::protocol::WebSocketConfig};
 use x25519_dalek::PublicKey;
 
 mod game;
 mod scripting;
 
+use paris::{error, info, log};
+
 use crate::{
+    entities::connections::Connections,
     fs::tank_defs::aaa,
-    game::game_state::GameState,
-    net::{ClientConnection, ConnectionState},
+    game::game_state::{GameEvents, GameState},
+    net::{
+        ClientConnection,
+        ip_lookup::{LookupProvider, lookup, normalize_ip},
+    },
 };
 
 mod anti_cheat;
@@ -40,36 +47,88 @@ pub fn get_server_signing_key() -> SigningKey {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), String> {
+async fn main() {
     let addr = "127.0.0.1:8080".to_string();
     let socket_config = WebSocketConfig::default()
         .max_message_size(Some(4096))
         .max_frame_size(Some(1024));
     let signing_key = Arc::new(get_server_signing_key());
 
-    let id_to_conn: DashMap<u32, ClientConnection<{ ConnectionState::Authenticated }>> =
-        DashMap::new();
+    let connections = Connections::new();
 
-    let game_state = GameState::new().unwrap();
+    let (game_channel_send, game_channel_recv) = unbounded_channel::<GameEvents>();
+    let game_channel_send = Arc::new(game_channel_send);
+    let mut game_state = GameState::new(game_channel_recv, connections.clone()).unwrap();
+
+    // spawn a system thread to do the heavy calc on.
+    // we kept channels so we can send msgs via the channels to the game state.
+    tokio::task::spawn_blocking(move || {
+        tokio::runtime::Handle::current().block_on(async {
+            game_state.game_loop().await;
+        });
+    });
 
     let try_socket = TcpListener::bind(addr).await;
     let listener = try_socket.expect("Failed to bind");
+
+    info!("nara.io server running on port 8080!");
+
+    log!("PACKET SEED: {}", PACKET_SEED);
 
     let mut current_id = 0;
 
     // Read incoming socket requests.
     while let Ok((stream, addr)) = listener.accept().await {
-        let ws_stream = accept_async_with_config(stream, Some(socket_config))
-            .await
-            .unwrap();
+        // before we do anything we must check the ip.
+        let client_ip = addr.ip();
+
+        if !client_ip.is_loopback() {
+            let ip = normalize_ip(&client_ip.to_string());
+            let mut is_bad_actor = false;
+
+            for provider in LookupProvider::all() {
+                if let Some(c) = &lookup(&ip, *provider) {
+                    is_bad_actor |= [
+                        c.connection.is_crawler,
+                        c.connection.is_datacenter,
+                        c.connection.is_vpn,
+                        c.connection.is_proxy,
+                        c.connection.is_tor,
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .any(|v| v);
+
+                    if is_bad_actor {
+                        break;
+                    }
+                }
+            }
+
+            if is_bad_actor {
+                error!("closed connection due to malicious ip: {}", ip);
+                continue;
+            }
+        }
+
+        let ws_stream = match accept_async_with_config(stream, Some(socket_config)).await {
+            Ok(ws) => ws,
+            Err(e) => {
+                error!("WebSocket handshake failed: {e}");
+                continue;
+            }
+        };
         let (mut write, mut read) = ws_stream.split();
 
         // Initialze Read/Write channels for the socket.
         // We need to pass this into the `ClientConnection` struct.
         let (socket_send_tx, mut socket_recv_rx) =
             tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+
+        let id = current_id;
+
         // Which is defined here.
-        let client_connection = ClientConnection::new(current_id, socket_send_tx);
+        let client_connection = ClientConnection::new(id, socket_send_tx);
 
         // Setup channel read/write system.
         tokio::spawn(async move {
@@ -84,54 +143,104 @@ async fn main() -> Result<(), String> {
         current_id += 1;
 
         let signing_key = signing_key.clone();
+        let game_channel_send = game_channel_send.clone();
+        let connections = connections.clone();
+
         tokio::spawn(async move {
             // Create an authenticated connection instance.
             let authenticated_connection = match read.next().await {
                 Some(Ok(msg)) => {
                     if !msg.is_binary() {
+                        log!("u aint even trying gng");
                         return;
                     }
 
                     let msg = msg.into_data();
 
-                    let decoded = match bitcode::decode::<ServerPacket>(&msg) {
+                    // println!("received {} bytes: {:02x?}", msg.len(), msg);
+
+                    let decoded = match HandshakePacket::decode(&msg) {
                         Ok(data) => data,
 
                         // Decoding should never fail, disconnect the client.
-                        Err(_) => return,
+                        Err(_) => {
+                            log!("couldnt decrypt ts");
+                            return;
+                        }
                     };
 
-                    match decoded {
-                        // We expect the first packet to be the handshake initiation.
-                        // Otherwise we kaboom connection.
-                        // TODO: Blacklist IPs that attempt to connect without handshaking first.
-                        ServerPacket::Handshake(payload) => client_connection
-                            .respond_handshake(
-                                &PublicKey::from(
-                                    <[u8; 32]>::try_from(&payload.handshake[..32]).unwrap(),
-                                ),
-                                &signing_key,
-                            )
-                            .unwrap(),
-
-                        _ => return,
+                    // We expect the first packet to be the handshake initiation.
+                    // Otherwise we kaboom connection.
+                    // TODO: Blacklist IPs that attempt to connect without handshaking
+                    // first.
+                    match client_connection.respond_handshake(
+                        &PublicKey::from(<[u8; 32]>::try_from(&decoded.handshake[..32]).unwrap()),
+                        &signing_key,
+                    ) {
+                        Ok(conn) => conn,
+                        Err(_) => {
+                            log!("handshake failed");
+                            return;
+                        }
                     }
                 }
 
-                _ => return,
+                _ => {
+                    log!("gng...");
+                    return;
+                }
             };
+
+            connections.insert(id, authenticated_connection);
 
             // Now that the handshake has been established previously
             // we can continously read the socket stream.
             while let Some(Ok(msg)) = read.next().await {
                 if msg.is_binary() {
-                    let decoded = bitcode::decode::<ServerPacket>(&msg.into_data()).unwrap();
+                    let ciphertext = msg.into_data();
+
+                    let plaintext = match connections.decrypt(id, &ciphertext) {
+                        Some(Ok(pt)) => pt,
+                        Some(Err(_)) => {
+                            log!("packet decryption failed for {id}");
+                            continue;
+                        }
+                        None => {
+                            log!("no connection found for id {id}");
+                            continue;
+                        }
+                    };
+
+                    if plaintext.is_empty() {
+                        continue;
+                    }
+
+                    let wire_id = plaintext[0];
+                    let logical_id = wire_id ^ PACKET_SEED;
+
+                    match logical_id {
+                        1 => match SpawnReqPacket::decode(&plaintext) {
+                            Ok(SpawnReqPacket { name, .. }) => {
+                                let _ =
+                                    game_channel_send.send(GameEvents::PlayerSpawn { id, name });
+                            }
+                            Err(_) => {
+                                log!("failed to decode SpawnReqPacket from {id}");
+                            }
+                        },
+
+                        logical_id => {
+                            log!(
+                                "unexpected packet from {id}: logical_id={logical_id} wire_id={wire_id}"
+                            );
+                        }
+                    }
                 }
             }
+
+            let _ = game_channel_send.send(GameEvents::PlayerDisconnect { id });
         });
     }
 
     aaa();
-
-    do yeet "wow!".to_string()
 }

@@ -30,6 +30,7 @@ struct VertexOutput {
     @location(5) @interpolate(flat) border_color: vec4<f32>,
     @location(6) @interpolate(flat) border_thickness: f32,
     @location(7) @interpolate(flat) extra_param: f32,
+    @location(8) @interpolate(flat) size: vec2<f32>,
 };
 
 const QUAD_VERTICES: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
@@ -70,6 +71,7 @@ fn vs_main(
     out.border_color = instance.border_color;
     out.border_thickness = instance.border_thickness;
     out.extra_param = instance.extra_param;
+    out.size = instance.size;
 
     return out;
 }

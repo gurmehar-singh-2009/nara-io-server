@@ -1,11 +1,11 @@
+use std::sync::Arc;
+
 use glyphon::{
     Attrs, Cache, Color, FontSystem, Metrics, Resolution, Shaping, SwashCache, TextArea, TextAtlas,
     TextBounds, TextRenderer, Viewport,
 };
-use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use wgpu::util::DeviceExt;
 use wgpu::{
     Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, ColorTargetState,
@@ -13,7 +13,7 @@ use wgpu::{
     FragmentState, Instance, InstanceDescriptor, Limits, MultisampleState,
     PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPipeline,
     RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderStages, Surface,
-    SurfaceConfiguration, VertexState,
+    SurfaceConfiguration, VertexState, util::DeviceExt,
 };
 use winit::{
     application::ApplicationHandler,
@@ -24,7 +24,10 @@ use winit::{
     window::Window,
 };
 
-use crate::render::buffers::{CameraUniform, EntityInstance};
+use crate::render::{
+    buffers::{CameraUniform, EntityInstance},
+    colours::DARK_THEME,
+};
 
 pub struct RenderEntity<'a> {
     pub instance: EntityInstance,
@@ -44,7 +47,6 @@ pub struct RenderState {
     camera_bind_group: BindGroup,
     num_instances: u32,
 
-    // glyphon text rendering fields
     font_system: FontSystem,
     swash_cache: SwashCache,
     viewport: Viewport,
@@ -97,7 +99,7 @@ impl RenderState {
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps.formats[0];
-        let srgb_format = surface_format.add_srgb_suffix();
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -105,7 +107,7 @@ impl RenderState {
             height: physical_height,
             present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![srgb_format],
+            view_formats: vec![],
             desired_maximum_frame_latency: 2,
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
@@ -186,7 +188,7 @@ impl RenderState {
                 module: &fs_module,
                 entry_point: Some("fs_main"),
                 targets: &[Some(ColorTargetState {
-                    format: srgb_format,
+                    format: surface_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
                 })],
@@ -203,7 +205,7 @@ impl RenderState {
             primitive: PrimitiveState::default(),
         });
 
-        let dark_border = [0.22, 0.22, 0.22, 1.0];
+        let pure_black = [0.0, 0.0, 0.0, 1.0];
         let grid_line_color = [0.75, 0.75, 0.75, 1.0];
 
         let sample_instances: &[EntityInstance] = &[
@@ -225,7 +227,7 @@ impl RenderState {
                 shape_type: 1,
                 sides: 0,
                 fill_color: [0.6, 0.6, 0.6, 1.0],
-                border_color: dark_border,
+                border_color: pure_black,
                 border_thickness: 3.0,
                 extra_param: 1.0,
             },
@@ -243,7 +245,7 @@ impl RenderState {
             .load_font_data(include_bytes!("../../assets/Exo2.ttf").to_vec());
         let swash_cache = SwashCache::new();
         let cache = Cache::new(&device);
-        let mut atlas = TextAtlas::new(&device, &queue, &cache, srgb_format);
+        let mut atlas = TextAtlas::new(&device, &queue, &cache, surface_format);
         let text_renderer = TextRenderer::new(
             &mut atlas,
             &device,
@@ -392,7 +394,7 @@ impl RenderState {
         };
 
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
-            format: Some(self.config.view_formats[0]),
+            format: Some(self.config.format),
             ..Default::default()
         });
 
@@ -411,10 +413,10 @@ impl RenderState {
                     depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.808,
-                            g: 0.808,
-                            b: 0.808,
-                            a: 1.0,
+                            r: DARK_THEME.background[0] as f64,
+                            g: DARK_THEME.background[1] as f64,
+                            b: DARK_THEME.background[2] as f64,
+                            a: DARK_THEME.background[3] as f64,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -464,7 +466,7 @@ impl RenderState {
         };
 
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
-            format: Some(self.config.view_formats[0]),
+            format: Some(self.config.format),
             ..Default::default()
         });
 
@@ -478,6 +480,9 @@ impl RenderState {
 
         let mut text_areas = Vec::new();
 
+        let text_border_thickness = 3.0;
+        let text_border_color = Color::rgb(0, 0, 0);
+
         for entity in entities {
             if let Some(text_comp) = entity.text {
                 let (screen_x, screen_y) = Renderer::world_to_screen(
@@ -489,10 +494,36 @@ impl RenderState {
                     screen_h,
                 );
 
+                let base_left = screen_x + text_comp.offset[0];
+                let base_top = screen_y + text_comp.offset[1];
+
+                for x in -text_border_thickness as i32..=text_border_thickness as i32 {
+                    for y in -text_border_thickness as i32..=text_border_thickness as i32 {
+                        if x == 0 && y == 0 {
+                            continue;
+                        }
+
+                        text_areas.push(TextArea {
+                            buffer: &text_comp.buffer,
+                            left: base_left + x as f32,
+                            top: base_top + y as f32,
+                            scale: 1.0,
+                            bounds: TextBounds {
+                                left: 0,
+                                top: 0,
+                                right: self.config.width as i32,
+                                bottom: self.config.height as i32,
+                            },
+                            default_color: text_border_color,
+                            custom_glyphs: &[],
+                        });
+                    }
+                }
+
                 text_areas.push(TextArea {
                     buffer: &text_comp.buffer,
-                    left: screen_x + text_comp.offset[0],
-                    top: screen_y + text_comp.offset[1],
+                    left: base_left,
+                    top: base_top,
                     scale: 1.0,
                     bounds: TextBounds {
                         left: 0,
@@ -531,10 +562,10 @@ impl RenderState {
                     depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.808,
-                            g: 0.808,
-                            b: 0.808,
-                            a: 1.0,
+                            r: DARK_THEME.background[0] as f64,
+                            g: DARK_THEME.background[1] as f64,
+                            b: DARK_THEME.background[2] as f64,
+                            a: DARK_THEME.background[3] as f64,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -659,45 +690,54 @@ impl ApplicationHandler<RenderState> for Renderer {
                 let camera_pos = [0.0, 0.0];
                 let zoom = 0.002;
 
-                let dark_border = [0.22, 0.22, 0.22, 1.0];
-                let grid_line_color = [0.75, 0.75, 0.75, 1.0];
+                let pure_black = [0.0, 0.0, 0.0, 1.0];
+
+                let grid_bg = DARK_THEME.background;
+                let grid_line_color = [
+                    DARK_THEME.grid[0],
+                    DARK_THEME.grid[1],
+                    DARK_THEME.grid[2],
+                    DARK_THEME.grid_alpha,
+                ];
+
+                let text_color = Color::rgb(255, 255, 255);
 
                 let mut player_label =
                     TextComponent::new(&mut state.font_system, "Player (Circle)");
-                player_label.color = Color::rgb(30, 30, 30);
-                player_label.set_centered_offset(-70.0);
+                player_label.color = text_color;
+                player_label.set_centered_offset(-160.0);
 
                 let mut enemy_label = TextComponent::new(&mut state.font_system, "Enemy (Circle)");
-                enemy_label.color = Color::rgb(220, 40, 40);
-                enemy_label.set_centered_offset(-70.0);
+                enemy_label.color = text_color;
+                enemy_label.set_centered_offset(-160.0);
 
                 let mut box_label = TextComponent::new(&mut state.font_system, "Box");
-                box_label.color = Color::rgb(40, 180, 40);
-                box_label.set_centered_offset(-70.0);
+                box_label.color = text_color;
+                box_label.set_centered_offset(-160.0);
 
                 let mut triangle_label =
                     TextComponent::new(&mut state.font_system, "Triangle (3-Polygon)");
-                triangle_label.color = Color::rgb(220, 160, 20);
-                triangle_label.set_centered_offset(-70.0);
+                triangle_label.color = text_color;
+                triangle_label.set_centered_offset(-160.0);
 
                 let mut pentagon_label =
                     TextComponent::new(&mut state.font_system, "Pentagon (5-Polygon)");
-                pentagon_label.color = Color::rgb(160, 40, 220);
-                pentagon_label.set_centered_offset(-70.0);
+                pentagon_label.color = text_color;
+                pentagon_label.set_centered_offset(-160.0);
 
                 let mut hexagon_label =
                     TextComponent::new(&mut state.font_system, "Hexagon (6-Polygon)");
-                hexagon_label.color = Color::rgb(20, 180, 220);
-                hexagon_label.set_centered_offset(-70.0);
+                hexagon_label.color = text_color;
+                hexagon_label.set_centered_offset(-160.0);
 
                 let mut square_label =
                     TextComponent::new(&mut state.font_system, "Square (4-Polygon)");
-                square_label.color = Color::rgb(20, 180, 220);
-                square_label.set_centered_offset(-70.0);
+                square_label.color = text_color;
+                square_label.set_centered_offset(-160.0);
 
                 let mut trapezoid_label = TextComponent::new(&mut state.font_system, "Trapezoid");
-                trapezoid_label.color = Color::rgb(220, 100, 30);
-                trapezoid_label.set_centered_offset(-70.0);
+                trapezoid_label.color = text_color;
+                trapezoid_label.set_centered_offset(-160.0);
 
                 let sample_entities = [
                     RenderEntity {
@@ -707,10 +747,10 @@ impl ApplicationHandler<RenderState> for Renderer {
                             rotation: 0.0,
                             shape_type: 2,
                             sides: 0,
-                            fill_color: [0.808, 0.808, 0.808, 1.0],
+                            fill_color: grid_bg,
                             border_color: grid_line_color,
-                            border_thickness: 2.0,
-                            extra_param: 64.0,
+                            border_thickness: 1.0,
+                            extra_param: 32.0,
                         },
                         text: None,
                     },
@@ -721,9 +761,9 @@ impl ApplicationHandler<RenderState> for Renderer {
                             rotation: 0.0,
                             shape_type: 1,
                             sides: 0,
-                            fill_color: [0.55, 0.55, 0.55, 1.0],
-                            border_color: dark_border,
-                            border_thickness: 3.0,
+                            fill_color: DARK_THEME.barrel,
+                            border_color: pure_black,
+                            border_thickness: 6.0,
                             extra_param: 1.0,
                         },
                         text: None,
@@ -735,9 +775,9 @@ impl ApplicationHandler<RenderState> for Renderer {
                             rotation: 0.0,
                             shape_type: 0,
                             sides: 0,
-                            fill_color: [0.2, 0.65, 0.95, 1.0],
-                            border_color: dark_border,
-                            border_thickness: 3.5,
+                            fill_color: DARK_THEME.team_blue,
+                            border_color: pure_black,
+                            border_thickness: 6.0,
                             extra_param: 1.0,
                         },
                         text: Some(&player_label),
@@ -749,9 +789,9 @@ impl ApplicationHandler<RenderState> for Renderer {
                             rotation: 0.0,
                             shape_type: 0,
                             sides: 0,
-                            fill_color: [0.95, 0.25, 0.25, 1.0],
-                            border_color: dark_border,
-                            border_thickness: 3.5,
+                            fill_color: DARK_THEME.team_red,
+                            border_color: pure_black,
+                            border_thickness: 6.0,
                             extra_param: 1.0,
                         },
                         text: Some(&enemy_label),
@@ -763,9 +803,9 @@ impl ApplicationHandler<RenderState> for Renderer {
                             rotation: 0.0,
                             shape_type: 1,
                             sides: 0,
-                            fill_color: [0.3, 0.85, 0.4, 1.0],
-                            border_color: dark_border,
-                            border_thickness: 3.5,
+                            fill_color: DARK_THEME.barrel,
+                            border_color: pure_black,
+                            border_thickness: 6.0,
                             extra_param: 1.0,
                         },
                         text: Some(&box_label),
@@ -777,9 +817,9 @@ impl ApplicationHandler<RenderState> for Renderer {
                             rotation: 0.0,
                             shape_type: 3,
                             sides: 3,
-                            fill_color: [0.95, 0.7, 0.2, 1.0],
-                            border_color: dark_border,
-                            border_thickness: 3.5,
+                            fill_color: DARK_THEME.triangle,
+                            border_color: pure_black,
+                            border_thickness: 6.0,
                             extra_param: 1.0,
                         },
                         text: Some(&triangle_label),
@@ -791,9 +831,9 @@ impl ApplicationHandler<RenderState> for Renderer {
                             rotation: 0.0,
                             shape_type: 3,
                             sides: 4,
-                            fill_color: [0.95, 0.7, 0.2, 1.0],
-                            border_color: dark_border,
-                            border_thickness: 3.5,
+                            fill_color: DARK_THEME.square,
+                            border_color: pure_black,
+                            border_thickness: 6.0,
                             extra_param: 1.0,
                         },
                         text: Some(&square_label),
@@ -805,9 +845,9 @@ impl ApplicationHandler<RenderState> for Renderer {
                             rotation: 0.0,
                             shape_type: 3,
                             sides: 5,
-                            fill_color: [0.7, 0.3, 0.9, 1.0],
-                            border_color: dark_border,
-                            border_thickness: 3.5,
+                            fill_color: DARK_THEME.pentagon,
+                            border_color: pure_black,
+                            border_thickness: 6.0,
                             extra_param: 1.0,
                         },
                         text: Some(&pentagon_label),
@@ -819,9 +859,9 @@ impl ApplicationHandler<RenderState> for Renderer {
                             rotation: 0.0,
                             shape_type: 3,
                             sides: 6,
-                            fill_color: [0.2, 0.8, 0.9, 1.0],
-                            border_color: dark_border,
-                            border_thickness: 3.5,
+                            fill_color: DARK_THEME.crashers,
+                            border_color: pure_black,
+                            border_thickness: 6.0,
                             extra_param: 1.0,
                         },
                         text: Some(&hexagon_label),
@@ -868,7 +908,7 @@ impl TextComponent {
             offset: [0.0, 0.0],
         };
 
-        component.set_centered_offset(-60.0);
+        component.set_centered_offset(-560.0);
         component
     }
 

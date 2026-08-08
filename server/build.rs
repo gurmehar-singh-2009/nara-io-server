@@ -1,8 +1,7 @@
+use std::{env, fs, path::PathBuf};
+
 use ed25519_dalek::SigningKey;
 use getrandom::{SysRng, rand_core::UnwrapErr};
-use std::env;
-use std::fs;
-use std::path::PathBuf;
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());

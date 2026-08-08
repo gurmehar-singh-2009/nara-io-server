@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WASM WebGL2 App</title>
+
+  <link data-trunk rel="rust" data-wasm-opt="z" />
+  <!--<link data-trunk rel="rust" data-wasm-opt="0" />-->
+
+  <!--<link data-trunk rel="rust" data-bin="app" />-->
+  <!--<link data-trunk rel="rust" data-bin="worker" data-type="worker" />-->
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+
+  <style>
+    /* Prevent scrollbars and expand the canvas to fill the entire browser viewport */
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #121212;
+    }
+
+    /* ID must match the string passed to document.get_element_by_id in lib.rs */
+    #gameCanvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+</body>
+</html>

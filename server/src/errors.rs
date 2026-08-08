@@ -1,4 +1,3 @@
-use shared::ClientPacket;
 use snafu::prelude::*;
 use tokio::sync::mpsc::error::SendError;
 

@@ -1,22 +1,29 @@
-/*
- *
- * Ok so a diep.io style game has a few vectors we can monitor:
- *
- * - Tank upgrades speed (tank upgrade and level upgrades). Can't be *too* fast (prevent auto-upgrade scripts).
- * - Tank aim. Calculate the higher-order derivatives for jerk, and see if it spikes. Obviously you can't move your mouse
- * across your screen instantly. Also, we should check if the movement is linear, we expect a "bell curve" shape for their movement.
- * Also: check the error value (actual - expected) for the bell curve shape, if it's consistently off then they are offsetting using Math.random() or such.
- * Extreme: perform Frequency Analysis, turn a list of previous angles into the freq domain using FFT and check the avg frequency. Something high like 20Hz is impossible.
- * Later: train a small NN based on valid movement data and use that instead.
- *
- * Of course, you should only be flagging the user. We will implement a score based system and ban appropriately.
- *
- * For multibox:
- * - check if multiple clients are sending same packets (most likely movement/aim)
- * - they will probably add some noise to it though so check if some people are aiming in a relative direction often.
- * - also just block vpns, proxy, etc (scrape free proxy sites, they used that for arras).
- *
- */
+// Ok so a diep.io style game has a few vectors we can monitor:
+//
+// - Tank upgrades speed (tank upgrade and level upgrades). Can't be *too* fast
+//   (prevent auto-upgrade scripts).
+// - Tank aim. Calculate the higher-order derivatives for jerk, and see if it
+//   spikes. Obviously you can't move your mouse
+// across your screen instantly. Also, we should check if the movement is
+// linear, we expect a "bell curve" shape for their movement. Also: check the
+// error value (actual - expected) for the bell curve shape, if it's
+// consistently off then they are offsetting using Math.random() or such.
+// Extreme: perform Frequency Analysis, turn a list of previous angles into the
+// freq domain using FFT and check the avg frequency. Something high like 20Hz
+// is impossible. Later: train a small NN based on valid movement data and use
+// that instead.
+//
+// Of course, you should only be flagging the user. We will implement a score
+// based system and ban appropriately.
+//
+// For multibox:
+// - check if multiple clients are sending same packets (most likely
+//   movement/aim)
+// - they will probably add some noise to it though so check if some people are
+//   aiming in a relative direction often.
+// - also just block vpns, proxy, etc (scrape free proxy sites, they used that
+//   for arras).
+//
 pub mod anti_cheat {
     use std::f32::consts::{PI, TAU};
 

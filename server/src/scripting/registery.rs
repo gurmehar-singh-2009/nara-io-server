@@ -1,4 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 use mlua::{Function, Lua};
 
@@ -18,12 +23,15 @@ impl WeaponRegistry {
     }
 }
 
-pub fn register_commands(lua: &Lua) -> mlua::Result<Rc<RefCell<HashMap<String, Function>>>> {
-    let commands: Rc<RefCell<HashMap<String, Function>>> = Rc::new(RefCell::new(HashMap::new()));
+pub fn register_commands(lua: &Lua) -> mlua::Result<Arc<Mutex<HashMap<String, Function>>>> {
+    let commands: Arc<Mutex<HashMap<String, Function>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let reg = commands.clone();
     let register_fn = lua.create_function(move |_, (name, func): (String, Function)| {
-        reg.borrow_mut().insert(name, func);
+        reg.lock()
+            .map_err(|e| mlua::Error::external(e.to_string()))?
+            .insert(name, func);
+        // reg.borrow_mut().insert(name, func);
         Ok(())
     })?;
 
@@ -33,4 +41,33 @@ pub fn register_commands(lua: &Lua) -> mlua::Result<Rc<RefCell<HashMap<String, F
     lua.globals().set("commands", table)?;
 
     Ok(commands)
+}
+
+pub fn register_events(lua: &Lua) -> mlua::Result<()> {
+    let listeners_table = lua.create_table()?;
+    lua.set_named_registry_value("EVENT_LISTENERS", listeners_table)?;
+
+    let events_table = lua.create_table()?;
+
+    let on_fn = lua.create_function(|lua, (event_name, func): (String, Function)| {
+        let listeners: mlua::Table = lua.named_registry_value("EVENT_LISTENERS")?;
+
+        let list: mlua::Table = match listeners.get(&*event_name)? {
+            mlua::Value::Table(t) => t,
+            _ => {
+                let new_table = lua.create_table()?;
+                listeners.set(event_name.as_str(), new_table.clone())?;
+                new_table
+            }
+        };
+
+        list.push(func)?;
+
+        Ok(())
+    })?;
+
+    events_table.set("on", on_fn)?;
+    lua.globals().set("events", events_table)?;
+
+    Ok(())
 }

@@ -1,14 +1,19 @@
 use glam::Vec2;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
+use crate::entities::{bullet::Bullets, tank::Tanks};
+
 #[derive(Debug, Clone)]
 pub struct Entities {
     generations: Vec<u32>,
     alive: Vec<bool>,
-
     positions: Vec<Vec2>,
     velocities: Vec<Vec2>,
     health: Vec<u32>,
+    free: Vec<usize>,
+
+    pub tanks: Tanks,
+    pub bullets: Bullets,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -25,7 +30,37 @@ impl Entities {
             positions: vec![],
             velocities: vec![],
             health: vec![],
+            free: vec![],
+            tanks: Tanks::new(256),
+            bullets: Bullets::new(),
         }
+    }
+
+    pub fn spawn_tank(
+        &mut self,
+        position: Vec2,
+        velocity: Vec2,
+        health: u32,
+        name: String,
+    ) -> EntityId {
+        let id = self.spawn(position, velocity, health);
+        self.tanks.insert(id, name);
+        id
+    }
+
+    pub fn despawn(&mut self, id: EntityId) -> bool {
+        if !self.is_alive(id) {
+            return false;
+        }
+        self.alive[id.index] = false;
+        self.tanks.remove(id);
+        self.free.push(id.index);
+        true
+    }
+
+    pub fn is_alive(&self, id: EntityId) -> bool {
+        self.alive.get(id.index).copied().unwrap_or(false)
+            && self.generations[id.index] == id.generation
     }
 
     pub fn iter<'a>(&'a self) -> impl ParallelIterator<Item = EntityRef<'a>> {
@@ -89,7 +124,7 @@ impl Entities {
     }
 
     pub fn spawn(&mut self, position: Vec2, velocity: Vec2, health: u32) -> EntityId {
-        if let Some(index) = self.alive.iter().position(|&alive| !alive) {
+        if let Some(index) = self.free.pop() {
             self.generations[index] += 1;
             self.alive[index] = true;
             self.positions[index] = position;
@@ -120,6 +155,20 @@ impl Entities {
     }
 
     pub fn set_speed(&self, id: EntityId, vel: f32) {}
+
+    pub fn get(&self, id: EntityId) -> Option<EntityRef<'_>> {
+        if !self.is_alive(id) {
+            return None;
+        }
+
+        Some(EntityRef {
+            generation: &self.generations[id.index],
+            alive: &self.alive[id.index],
+            position: &self.positions[id.index],
+            velocity: &self.velocities[id.index],
+            health: &self.health[id.index],
+        })
+    }
 }
 
 pub struct EntityRef<'a> {

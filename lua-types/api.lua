@@ -1,5 +1,16 @@
 ---@meta
 
+---@class PlayerSpawnEvent
+---@field name string
+
+---@class Events
+events = {}
+
+---@param event "player_spawn"
+---@param handler fun(event: PlayerSpawnEvent)
+---@overload fun(event: string, handler: fun(event: table))
+function events.on(event, handler) end
+
 ---@class Commands
 ---@field register fun(name: string, handler: fun(player: Player))
 commands = {}
@@ -12,7 +23,7 @@ commands = {}
 ---@field size? number         -- radius; defaults from barrel width if omitted
 ---@field knockback? number    -- push force applied to whatever it hits
 ---@field spread? number       -- degrees of random angle deviation per shot
----@field onHit? fun(target: Player) -- custom effect when this bullet lands 
+---@field onHit? fun(target: Player) -- custom effect when this bullet lands
 
 ---@class Barrel
 ---@field x number

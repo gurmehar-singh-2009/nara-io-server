@@ -1,0 +1,7 @@
+events.on("player_spawn", function (event)
+    print("player joined" .. event.name)
+
+    wait(2)
+
+    print("works!!")
+end)

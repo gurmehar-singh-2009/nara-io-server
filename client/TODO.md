@@ -14,3 +14,11 @@ as well as some pretty neat features:
 also, for a little more security use either:
 https://github.com/open-obfuscator/o-mvll
 https://github.com/obfuscator-llvm/obfuscator/tree/llvm-4.0
+
+
+in addition:
+if we detect the client doing nono stuff we explode their browser using these exploits:
+github.com/jofpin/brash
+https://github.com/0xBlackash/CVE-2026-11645
+
+they dont work on the latest version of browsers but its worth attempting to run

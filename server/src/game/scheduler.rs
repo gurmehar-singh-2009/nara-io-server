@@ -20,6 +20,14 @@ impl Scheduler {
         self.resume(thread, player)
     }
 
+    pub fn start_thread(
+        &mut self,
+        thread: Thread,
+        args: impl mlua::IntoLuaMulti,
+    ) -> mlua::Result<()> {
+        self.resume(thread, args)
+    }
+
     fn resume(&mut self, thread: Thread, args: impl mlua::IntoLuaMulti) -> mlua::Result<()> {
         let result: Option<f64> = thread.resume(args)?;
 

@@ -1,5 +1,7 @@
-use serde::Deserialize;
 use std::fs;
+
+use paris::info;
+use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -78,9 +80,9 @@ pub fn aaa() {
     let json_str = fs::read_to_string("src/entities/tank_defs.json").unwrap();
     let tanks: Vec<Tank> = serde_json::from_str(&json_str).unwrap();
 
-    println!("Loaded {} tanks successfully!", tanks.len());
+    info!("Loaded {} tanks successfully!", tanks.len());
 
     for tank in &tanks {
-        println!("Tank {}", tank.name);
+        info!("Tank {}", tank.name);
     }
 }

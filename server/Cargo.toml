@@ -7,7 +7,7 @@ edition = "2024"
 bevy_ecs = "0.19.0"
 bytes = { workspace = true }
 bitcode = { workspace = true }
-chacha20poly1305 = "0.11.0"
+chacha20poly1305 = { workspace = true }
 config = "0.15.25"
 dashmap = "6.2.1"
 getrandom = "0.4.3"
@@ -31,7 +31,11 @@ glam = "0.33.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 futures-util = "0.3.33"
-mlua = { version = "0.12.0", features = ["lua55", "vendored"] }
+mlua = { version = "0.12", features = ["lua55", "vendored", "async", "send"] }
+wtransport = "0.7.1"
+paris = { version = "1.5.15", features = ["macros", "timestamps"] }
+reqwest = { version = "0.13.3", features = ["blocking", "json"] }
+nanorand = "0.8.0"
 
 [build-dependencies]
 ed25519-dalek = { workspace = true }

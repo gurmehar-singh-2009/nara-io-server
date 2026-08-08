@@ -1,3 +1,1 @@
-struct Api {
-    
-}
+struct Api {}

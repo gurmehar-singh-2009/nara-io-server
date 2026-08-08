@@ -17,7 +17,10 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 console_error_panic_hook = "0.1.7"
 ed25519-dalek = { workspace = true }
+x25519-dalek = { workspace = true }
+bitcode = { workspace = true }
 futures = "0.3.33"
+shared = { path = "../shared" }
 gloo-net = "0.7.0"
 gloo-timers = { version = "0.4.0", features = ["futures"] }
 obfstr = "0.4.6"
@@ -33,6 +36,10 @@ glam = "0.33.2"
 bytemuck = { version = "1.25.2", features = ["derive"] }
 js-sys = "0.3.103"
 glyphon = "0.12.0"
+chacha20poly1305 = { workspace = true }
+hkdf = { workspace = true }
+sha2 = { workspace = true }
+getrandom = { version = "0.4.3", features = ["wasm_js"] }
 
 [dependencies.web-sys]
 version = "0.3.103"
@@ -40,8 +47,11 @@ features = [
     "Document",
     "Element",
     "HtmlCanvasElement",
+    "HtmlInputElement",
     "Window",
     "Performance",
+    "Crypto",
+    "EventTarget",
 ]
 
 [dependencies.image]

@@ -1,13 +1,26 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    fs,
+    path::Path,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 fn main() {
-    // compile time seed based on time
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .subsec_nanos();
-    let seed = (nanos & 0xFF) as u8;
+    let seed_file = Path::new("packet_seed.rs");
 
-    println!("cargo:rustc-env=PACKET_SEED={}", seed);
+    if !seed_file.exists() {
+        let seed = (SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .subsec_nanos()
+            & 0xff) as u8;
+
+        fs::write(
+            seed_file,
+            format!("pub const PACKET_SEED: u8 = {};\n", seed),
+        )
+        .unwrap();
+    }
+
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=packet_seed.rs");
 }

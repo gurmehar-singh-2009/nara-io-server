@@ -3,7 +3,7 @@ pub mod ip;
 pub mod lookup;
 
 // pub use ip::get_public_ip_addr;
-pub use api::{lookup, LookupProvider};
+pub use api::{LookupProvider, lookup};
 pub use lookup::LookupResult;
 
 pub fn normalize_ip(ip: &str) -> String {

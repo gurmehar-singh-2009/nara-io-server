@@ -1,4 +1,4 @@
-/* src/ip.rs */
+// src/ip.rs
 
 // pub fn get_public_ip_addr() -> Option<String> {
 //     let sources = vec![
