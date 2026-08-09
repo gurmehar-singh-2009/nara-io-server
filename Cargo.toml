@@ -1,5 +1,5 @@
 [workspace]
-members = ["server", "client", "shared", "tt"]
+members = ["server", "shared", "tt"]
 resolver = "3"
 
 package.authors = ["username"]
