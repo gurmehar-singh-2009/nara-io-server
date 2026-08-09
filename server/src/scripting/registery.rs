@@ -10,6 +10,7 @@ use shared::packets::client_bound::TankSpec;
 
 use crate::scripting::loader::{TankDef, WeaponDef, load_tank, load_weapon};
 
+#[derive(Default)]
 pub struct WeaponRegistry(std::collections::HashMap<String, WeaponDef>);
 
 impl WeaponRegistry {
@@ -73,6 +74,7 @@ pub fn register_events(lua: &Lua) -> mlua::Result<()> {
     Ok(())
 }
 
+#[derive(Default)]
 pub struct TankRegistry(pub HashMap<String, TankDef>);
 
 impl TankRegistry {
