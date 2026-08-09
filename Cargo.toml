@@ -17,12 +17,12 @@ chacha20poly1305 = "0.11.0"
 mlua = { version = "0.12", features = ["lua55", "vendored", "async", "send"] }
 
 [profile.release]
-opt-level = 3
-lto = "thin"
-codegen-units = 1
+opt-level = 0
+lto = false
+codegen-units = 256
+incremental = true
 debug = false
 overflow-checks = false
-incremental = false
 panic = "abort"
 strip = "debuginfo"
 
