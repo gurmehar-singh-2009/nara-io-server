@@ -6,17 +6,15 @@ A prototype diep.io clone game.
 
 Features:
 - Advanced Anti Cheat
-- Add more later as i go
-
-this project was an excuse for me to use the `do yeet` expr.
-
-so i havent actually finished the project yet (not even close) so consider the below information a WIP
+- Lua Plugin support!
+- Advanced GPU renderer using WebGPU!
 
 ## Getting Started
 You will need the following installed:
 - Rust
+- Trunk
 
-And within that you must run these commands:
+To install trunk:
 ```bash
 cargo install trunk
 ```
@@ -24,7 +22,13 @@ cargo install trunk
 Then you can run
 ```bash
 chmod +x run_client.sh run_server.sh
+
+# run this in one terminal
+cd client
 ./run_client.sh
+
+# run this in another
+cd server
 ./run_server.sh
 ```
 if you are hosting locally, otherwise use the `prod` variation.

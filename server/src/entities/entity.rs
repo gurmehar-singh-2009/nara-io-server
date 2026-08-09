@@ -79,7 +79,7 @@ impl Entities {
         );
         id
     }
-    
+
     pub fn despawn(&mut self, id: EntityId) -> bool {
         if !self.is_alive(id) {
             return false;

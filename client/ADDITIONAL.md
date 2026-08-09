@@ -1,7 +1,6 @@
-a few things i still need to do
-in order of urgency
+## This contains a list of things open to contributions!
 
-[-] integrate glyphon for text rendering (i will NOT be wasting my time doing this - sorry)
+- integrate glyphon for text rendering (i will NOT be wasting my time doing this - sorry)
     note for this: glyphon sucks bro, there is no built in text borders so either i have to roll my own with sdf or do like 10 calls to support borders by shifting the test a little and making it the border color thenr endering the text ontop of it. had to redesign a little bit as well to support text vs non text render entities.
 - create a websocket system and decode msgs (super easy - 25m max)
 - connect socket state to render state (easyish - no et)

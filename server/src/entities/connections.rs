@@ -4,7 +4,10 @@ use dashmap::DashMap;
 use paris::error;
 use shared::packets::Packet;
 
-use crate::{errors::ServerError, net::{ClientConnection, ConnectionState}};
+use crate::{
+    errors::ServerError,
+    net::{ClientConnection, ConnectionState},
+};
 
 #[derive(Clone)]
 pub struct Connections {

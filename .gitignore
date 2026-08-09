@@ -4,3 +4,7 @@ client/public_key.bin
 target/
 
 .env
+
+old.html
+old-but-newer.html
+dist

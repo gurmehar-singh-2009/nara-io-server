@@ -12,10 +12,10 @@ impl<'a, 'b> UserData for LuaPlayer {
         //     let entities = lua.app_data_ref::<Entities>().unwrap();
         //     Ok(entities.speed_of(this.0))
         // });
-        // fields.add_field_method_set("speed", |lua, this: &mut LuaPlayer, v: f32| {
-        //     let entities = lua.app_data_mut::<Entities>().unwrap();
-        //     entities.set_speed(this.0, v);
-        //     Ok(())
+        // fields.add_field_method_set("speed", |lua, this: &mut LuaPlayer, v:
+        // f32| {     let entities =
+        // lua.app_data_mut::<Entities>().unwrap();     entities.
+        // set_speed(this.0, v);     Ok(())
         // });
     }
 
