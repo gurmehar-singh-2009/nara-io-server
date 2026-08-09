@@ -60,7 +60,16 @@ async fn main() {
 
     let (game_channel_send, game_channel_recv) = unbounded_channel::<GameEvents>();
     let game_channel_send = Arc::new(game_channel_send);
-    let mut game_state = GameState::new(game_channel_recv, connections.clone()).unwrap();
+    let mut game_state = match GameState::new(game_channel_recv, connections.clone()) {
+        Ok(state) => state,
+        Err(e) => {
+            eprintln!(
+                "Failed to initialize game state! Missing file or script error: {}",
+                e
+            );
+            std::process::exit(1);
+        }
+    };
 
     // spawn a system thread to do the heavy calc on.
     // we kept channels so we can send msgs via the channels to the game state.
