@@ -1,0 +1,2 @@
+cd shared
+cargo build
