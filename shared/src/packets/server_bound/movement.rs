@@ -3,7 +3,7 @@ use bitcode::{Decode, Encode};
 use crate::junk_packet;
 
 junk_packet! {
-    pub struct LeaderboardPacket {
-        pub entries: Vec<(String, u32)>,
+    pub struct MovementPacket {
+        pub dir: Option<f32>,
     }
 }

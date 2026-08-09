@@ -14,6 +14,7 @@ sha2 = "0.11.0"
 x25519-dalek = { version = "3.0.0", features = ["static_secrets", "zeroize", "precomputed-tables"] }
 ed25519-dalek = { version = "3.0.0", features = ["rand_core"] }
 chacha20poly1305 = "0.11.0"
+mlua = { version = "0.12", features = ["lua55", "vendored", "async", "send"] }
 
 [profile.release]
 opt-level = 3

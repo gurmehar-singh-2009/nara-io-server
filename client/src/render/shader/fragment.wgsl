@@ -90,6 +90,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(final_color.rgb, final_color.a * alpha);
     }
 
+    if (in.shape_type == 4u) {
+        let radius = in.extra_param;
+        let q = abs(in.uv) - 1.0 + radius;
+        let dist_rounded = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+
+        let alpha = 1.0 - smoothstep(0.0 - delta, 0.0 + delta, dist_rounded);
+        if (alpha < 0.001) {
+            discard;
+        }
+        return vec4<f32>(in.fill_color.rgb, in.fill_color.a * alpha);
+    }
+
     if (in.shape_type == 3u && in.sides >= 3u) {
         let sides_f = f32(in.sides);
         let angle = atan2(in.uv.y, in.uv.x);

@@ -1,19 +1,24 @@
 use glam::Vec2;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
-use crate::entities::{bullet::Bullets, tank::Tanks};
+use crate::entities::{
+    bullet::Bullets,
+    shape::{ShapeKind, Shapes},
+    tank::Tanks,
+};
 
 #[derive(Debug, Clone)]
 pub struct Entities {
-    generations: Vec<u32>,
-    alive: Vec<bool>,
-    positions: Vec<Vec2>,
-    velocities: Vec<Vec2>,
-    health: Vec<u32>,
-    free: Vec<usize>,
+    pub generations: Vec<u32>,
+    pub alive: Vec<bool>,
+    pub positions: Vec<Vec2>,
+    pub velocities: Vec<Vec2>,
+    pub health: Vec<u32>,
+    pub free: Vec<usize>,
 
     pub tanks: Tanks,
     pub bullets: Bullets,
+    pub shapes: Shapes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,6 +38,7 @@ impl Entities {
             free: vec![],
             tanks: Tanks::new(256),
             bullets: Bullets::new(),
+            shapes: Shapes::new(2048),
         }
     }
 
@@ -48,12 +54,39 @@ impl Entities {
         id
     }
 
+    pub fn spawn_shape(
+        &mut self,
+        center: Vec2,
+        kind: ShapeKind,
+        health: u32,
+        rotation_speed: f32,
+        xp_reward: u32,
+        orbit_radius: f32,
+        orbit_angle: f32,
+        orbit_speed: f32,
+    ) -> EntityId {
+        let initial_pos = center + Vec2::new(orbit_angle.cos(), orbit_angle.sin()) * orbit_radius;
+        let id = self.spawn(initial_pos, Vec2::ZERO, health);
+        self.shapes.insert(
+            id,
+            kind,
+            rotation_speed,
+            xp_reward,
+            center,
+            orbit_radius,
+            orbit_angle,
+            orbit_speed,
+        );
+        id
+    }
+    
     pub fn despawn(&mut self, id: EntityId) -> bool {
         if !self.is_alive(id) {
             return false;
         }
         self.alive[id.index] = false;
         self.tanks.remove(id);
+        self.shapes.remove(id);
         self.free.push(id.index);
         true
     }
@@ -65,46 +98,44 @@ impl Entities {
 
     pub fn iter<'a>(&'a self) -> impl ParallelIterator<Item = EntityRef<'a>> {
         #[rustfmt::skip]
-        (
-            &self.generations,
-            &self.alive,
-            &self.positions,
-            &self.velocities,
-            &self.health,
-        )
-            .into_par_iter().map(|(generation, alive, position, velocity, health)| {
-                EntityRef { generation, alive, position, velocity, health }
-            })
-    }
-
-    pub fn iter_mut<'a>(&'a mut self) -> impl ParallelIterator<Item = EntityMut<'a>> {
-        #[rustfmt::skip]
-        (
-            &mut self.generations,
-            &mut self.alive,
-            &mut self.positions,
-            &mut self.velocities,
-            &mut self.health,
-        )
-            .into_par_iter().map(|(generation, alive, position, velocity, health)| {
-                EntityMut { generation, alive, position, velocity, health }
+        (&self.generations, &self.alive, &self.positions, &self.velocities, &self.health)
+            .into_par_iter()
+            .enumerate()
+            .map(|(index, (generation, alive, position, velocity, health))| {
+                EntityRef { index, generation, alive, position, velocity, health }
             })
     }
 
     pub fn iter_alive<'a>(&'a self) -> impl ParallelIterator<Item = EntityRef<'a>> {
         #[rustfmt::skip]
-        (
-            &self.generations,
-            &self.alive,
-            &self.positions,
-            &self.velocities,
-            &self.health,
-        )
+        (&self.generations, &self.alive, &self.positions, &self.velocities, &self.health)
             .into_par_iter()
-            .filter(move |(_, alive, _, _, _)| **alive)
-            .map(|(generation, alive, position, velocity, health)| {
-                EntityRef { generation, alive, position, velocity, health }
+            .enumerate()
+            .filter(|(_, (_, alive, _, _, _))| **alive)
+            .map(|(index, (generation, alive, position, velocity, health))| {
+                EntityRef { index, generation, alive, position, velocity, health }
             })
+    }
+
+    pub fn get(&self, id: EntityId) -> Option<EntityRef<'_>> {
+        if !self.is_alive(id) {
+            return None;
+        }
+        Some(EntityRef {
+            index: id.index,
+            generation: &self.generations[id.index],
+            alive: &self.alive[id.index],
+            position: &self.positions[id.index],
+            velocity: &self.velocities[id.index],
+            health: &self.health[id.index],
+        })
+    }
+
+    pub fn health_mut(&mut self, id: EntityId) -> Option<&mut u32> {
+        if !self.is_alive(id) {
+            return None;
+        }
+        Some(&mut self.health[id.index])
     }
 
     pub fn iter_alive_mut<'a>(&'a mut self) -> impl ParallelIterator<Item = EntityMut<'a>> {
@@ -117,9 +148,10 @@ impl Entities {
             &mut self.health,
         )
             .into_par_iter()
-            .filter(move |(_, alive, _, _, _)| **alive)
-            .map(|(generation, alive, position, velocity, health)| {
-                EntityMut { generation, alive, position, velocity, health }
+            .enumerate()
+            .filter(|(_, (_, alive, _, _, _))| **alive)
+            .map(|(index, (generation, alive, position, velocity, health))| {
+                EntityMut { index, generation, alive, position, velocity, health }
             })
     }
 
@@ -156,22 +188,40 @@ impl Entities {
 
     pub fn set_speed(&self, id: EntityId, vel: f32) {}
 
-    pub fn get(&self, id: EntityId) -> Option<EntityRef<'_>> {
-        if !self.is_alive(id) {
-            return None;
-        }
+    pub fn iter_alive_mut_with_tanks<'a>(
+        &'a mut self,
+    ) -> (impl ParallelIterator<Item = EntityMut<'a>> + 'a, &'a Tanks) {
+        let Entities {
+            generations,
+            alive,
+            positions,
+            velocities,
+            health,
+            tanks,
+            ..
+        } = self;
 
-        Some(EntityRef {
-            generation: &self.generations[id.index],
-            alive: &self.alive[id.index],
-            position: &self.positions[id.index],
-            velocity: &self.velocities[id.index],
-            health: &self.health[id.index],
-        })
+        let iter = (generations, alive, positions, velocities, health)
+            .into_par_iter()
+            .enumerate()
+            .filter(|(_, (_, alive, _, _, _))| **alive)
+            .map(
+                |(index, (generation, alive, position, velocity, health))| EntityMut {
+                    index,
+                    generation,
+                    alive,
+                    position,
+                    velocity,
+                    health,
+                },
+            );
+
+        (iter, &*tanks)
     }
 }
 
 pub struct EntityRef<'a> {
+    pub index: usize,
     pub generation: &'a u32,
     pub alive: &'a bool,
     pub position: &'a Vec2,
@@ -180,6 +230,7 @@ pub struct EntityRef<'a> {
 }
 
 pub struct EntityMut<'a> {
+    pub index: usize,
     pub generation: &'a mut u32,
     pub alive: &'a mut bool,
     pub position: &'a mut Vec2,

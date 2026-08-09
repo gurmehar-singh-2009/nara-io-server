@@ -1,31 +1,149 @@
-use glam::Vec2;
+use shared::packets::client_bound::BarrelDef;
 
-use crate::{entities::Entity, render::buffers::EntityInstance};
+use crate::{
+    entities::Entity,
+    render::{buffers::EntityInstance, colours::DARK_THEME},
+};
 
 pub struct Tank {
     pub id: u32,
-    pub pos: Vec2,
-    pub render_pos: Vec2,
+    pub name: String,
+
+    pub pos: glam::Vec2,
+    pub last_pos: glam::Vec2,
+    pub render_pos: glam::Vec2,
+
     pub rot: f32,
+    pub last_rot: f32,
+    pub render_rot: f32,
+
+    pub last_update_time: f64,
+
+    pub scale: f32,
+
+    pub health: u32,
+    pub max_health: u32,
+
+    pub render_health: f32,
+
+    pub dying: bool,
+    pub render_alpha: f32,
+
+    pub barrels: Vec<BarrelDef>,
+}
+
+impl Tank {
+    pub fn new(id: u32, name: String, pos: glam::Vec2) -> Self {
+        Self {
+            id,
+            name,
+
+            pos,
+            last_pos: pos,
+            render_pos: pos,
+
+            rot: 0.0,
+            last_rot: 0.0,
+            render_rot: 0.0,
+
+            last_update_time: 0.0,
+
+            scale: 1.0,
+
+            health: 100,
+            max_health: 100,
+
+            render_health: 100.0,
+
+            dying: false,
+            render_alpha: 1.0,
+
+            barrels: vec![],
+        }
+    }
 }
 
 impl Entity for Tank {
-    fn get_render_instance(&self) -> crate::render::buffers::EntityInstance {
-        // tank body
-        EntityInstance {
-            position: self.pos.to_array(),
-            size: [100., 100.],
-            rotation: self.rot,
-            shape_type: 0,
-            sides: 4,
-            fill_color: [1., 1., 1., 1.],
-            border_color: [1., 1., 1., 1.],
-            border_thickness: 4.,
-            extra_param: 1.,
+    fn get_render_instances(&self) -> Vec<EntityInstance> {
+        let mut instances = Vec::new();
+
+        for barrel in &self.barrels {
+            let barrel_angle = barrel.angle.to_radians();
+
+            let world_angle = self.render_rot + barrel_angle;
+
+            let local_base = glam::Vec2::new(barrel.x * self.scale, barrel.y * self.scale);
+
+            let base_offset = glam::Vec2::from_angle(self.render_rot).rotate(local_base);
+
+            let base_pos = self.render_pos + base_offset;
+
+            let center_offset =
+                glam::Vec2::from_angle(world_angle) * (barrel.length * self.scale * 0.5);
+
+            let world_pos = base_pos + center_offset;
+
+            instances.push(EntityInstance {
+                position: [world_pos.x, world_pos.y],
+
+                size: [barrel.length * self.scale, barrel.width * self.scale],
+
+                rotation: world_angle,
+
+                shape_type: 1,
+                sides: 4,
+
+                fill_color: [
+                    DARK_THEME.barrel[0],
+                    DARK_THEME.barrel[1],
+                    DARK_THEME.barrel[2],
+                    DARK_THEME.barrel[3] * self.render_alpha,
+                ],
+
+                border_color: [
+                    DARK_THEME.tank_outline[0],
+                    DARK_THEME.tank_outline[1],
+                    DARK_THEME.tank_outline[2],
+                    DARK_THEME.tank_outline[3] * self.render_alpha,
+                ],
+
+                border_thickness: 1.5 * self.scale,
+
+                extra_param: 1.0,
+            });
         }
 
-        // barrels: TODO
-        // they get a little more compliated since i have to adjust
-        // based on what tank they have
+        let size = 42.0 * self.scale;
+
+        instances.push(EntityInstance {
+            position: [self.render_pos.x, self.render_pos.y],
+
+            size: [size, size],
+
+            rotation: self.render_rot,
+
+            shape_type: 0,
+            sides: 0,
+
+            fill_color: [
+                DARK_THEME.tank_body[0],
+                DARK_THEME.tank_body[1],
+                DARK_THEME.tank_body[2],
+                DARK_THEME.tank_body[3] * self.render_alpha,
+            ],
+
+            border_color: [
+                DARK_THEME.tank_outline[0],
+                DARK_THEME.tank_outline[1],
+                DARK_THEME.tank_outline[2],
+                DARK_THEME.tank_outline[3] * self.render_alpha,
+            ],
+
+            border_thickness: 3.0 * self.scale,
+
+            extra_param: 1.0,
+        });
+
+        instances
     }
 }

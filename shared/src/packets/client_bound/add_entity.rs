@@ -1,6 +1,9 @@
 use bitcode::{Decode, Encode};
 
-use crate::{junk_packet, packets::client_bound::EntityType};
+use crate::{
+    junk_packet,
+    packets::client_bound::{BarrelDef, EntityType},
+};
 
 junk_packet! {
     pub struct AddEntityPacket {
@@ -11,5 +14,6 @@ junk_packet! {
         pub level: u32,
         pub name: String,
         pub is_entity_mine: bool,
+        pub barrels: Vec<BarrelDef>,
     }
 }

@@ -6,8 +6,9 @@ use std::{
 };
 
 use mlua::{Function, Lua};
+use shared::packets::client_bound::TankSpec;
 
-use crate::scripting::loader::{WeaponDef, load_weapon};
+use crate::scripting::loader::{TankDef, WeaponDef, load_tank, load_weapon};
 
 pub struct WeaponRegistry(std::collections::HashMap<String, WeaponDef>);
 
@@ -70,4 +71,28 @@ pub fn register_events(lua: &Lua) -> mlua::Result<()> {
     lua.globals().set("events", events_table)?;
 
     Ok(())
+}
+
+pub struct TankRegistry(pub HashMap<String, TankDef>);
+
+impl TankRegistry {
+    pub fn load_all(lua: &Lua, dir: &str) -> mlua::Result<Self> {
+        let mut map = HashMap::new();
+        for entry in std::fs::read_dir(dir)? {
+            let path = entry?.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("lua") {
+                continue;
+            }
+            let name = path.file_stem().unwrap().to_string_lossy().to_string();
+            map.insert(name, load_tank(lua, path.to_str().unwrap())?);
+        }
+        Ok(Self(map))
+    }
+
+    pub fn specs(&self) -> HashMap<String, TankSpec> {
+        self.0
+            .iter()
+            .map(|(k, v)| (k.clone(), v.spec.clone()))
+            .collect()
+    }
 }

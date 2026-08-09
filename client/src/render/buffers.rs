@@ -33,7 +33,7 @@ pub struct EntityInstance {
 
     /// 0 = Circle
     /// 1 = Box
-    /// 2 = Trapezoid
+    /// 2 = Grid
     /// 3 = Polygon
     pub shape_type: u32,
 

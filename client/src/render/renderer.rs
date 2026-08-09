@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use glyphon::{
     Attrs, Cache, Color, FontSystem, Metrics, Resolution, Shaping, SwashCache, TextArea, TextAtlas,
@@ -6,6 +6,7 @@ use glyphon::{
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
+use web_sys::window;
 use wgpu::{
     Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, ColorTargetState,
@@ -24,11 +25,16 @@ use winit::{
     window::Window,
 };
 
-use crate::render::{
-    buffers::{CameraUniform, EntityInstance},
-    colours::DARK_THEME,
+use crate::{
+    entities::Entity,
+    render::{
+        buffers::{CameraUniform, EntityInstance},
+        colours::DARK_THEME,
+    },
+    structs::game_state::GameState,
 };
 
+#[derive(Clone)]
 pub struct RenderEntity<'a> {
     pub instance: EntityInstance,
     pub text: Option<&'a TextComponent>,
@@ -53,10 +59,15 @@ pub struct RenderState {
     atlas: TextAtlas,
     text_renderer: TextRenderer,
     text_buffer: glyphon::Buffer,
+    leaderboard_buffer: glyphon::Buffer,
+
+    render_zoom: f32,
+
+    game_state: Rc<RefCell<GameState>>,
 }
 
 impl RenderState {
-    pub async fn new(window: Arc<Window>) -> Self {
+    pub async fn new(window: Arc<Window>, game: Rc<RefCell<GameState>>) -> Self {
         let size = window.inner_size();
 
         let instance = Instance::new(InstanceDescriptor {
@@ -125,7 +136,7 @@ impl RenderState {
                 [0.0, 0.0, 0.0, 1.0],
             ],
             camera_pos: [0.0, 0.0],
-            zoom: 0.002,
+            zoom: 0.005,
             aspect_ratio,
         };
 
@@ -205,33 +216,7 @@ impl RenderState {
             primitive: PrimitiveState::default(),
         });
 
-        let pure_black = [0.0, 0.0, 0.0, 1.0];
-        let grid_line_color = [0.75, 0.75, 0.75, 1.0];
-
-        let sample_instances: &[EntityInstance] = &[
-            EntityInstance {
-                position: [0.0, 0.0],
-                size: [10000.0, 10000.0],
-                rotation: 0.0,
-                shape_type: 2,
-                sides: 0,
-                fill_color: [0.808, 0.808, 0.808, 1.0],
-                border_color: grid_line_color,
-                border_thickness: 2.0,
-                extra_param: 64.0,
-            },
-            EntityInstance {
-                position: [0.0, 40.0],
-                size: [36.0, 60.0],
-                rotation: 0.0,
-                shape_type: 1,
-                sides: 0,
-                fill_color: [0.6, 0.6, 0.6, 1.0],
-                border_color: pure_black,
-                border_thickness: 3.0,
-                extra_param: 1.0,
-            },
-        ];
+        let sample_instances: &[EntityInstance] = &[];
 
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance Buffer"),
@@ -265,15 +250,19 @@ impl RenderState {
             },
         );
 
-        let mut text_buffer = glyphon::Buffer::new(&mut font_system, Metrics::new(32.0, 38.0));
+        let mut text_buffer = glyphon::Buffer::new(&mut font_system, Metrics::new(48.0, 56.0));
         text_buffer.set_size(Some(physical_width as f32), Some(physical_height as f32));
         text_buffer.set_text(
-            "Hello WebGPU!",
+            "son",
             &Attrs::new().family(glyphon::Family::SansSerif),
             Shaping::Basic,
             None,
         );
         text_buffer.shape_until_scroll(&mut font_system, false);
+
+        let mut leaderboard_buffer =
+            glyphon::Buffer::new(&mut font_system, Metrics::new(72.0, 84.0));
+        leaderboard_buffer.set_size(Some(physical_width as f32), Some(physical_height as f32));
 
         Self {
             surface,
@@ -286,13 +275,16 @@ impl RenderState {
             instance_buffer,
             camera_buffer,
             camera_bind_group,
-            num_instances: sample_instances.len() as u32,
+            num_instances: 0,
             font_system,
             swash_cache,
             viewport,
             atlas,
             text_renderer,
             text_buffer,
+            leaderboard_buffer,
+            render_zoom: 0.005,
+            game_state: game,
         }
     }
 
@@ -319,6 +311,9 @@ impl RenderState {
             self.text_buffer
                 .set_size(Some(physical_width as f32), Some(physical_height as f32));
 
+            self.leaderboard_buffer
+                .set_size(Some(physical_width as f32), Some(physical_height as f32));
+
             let aspect_ratio = physical_width as f32 / physical_height as f32;
 
             let camera_uniform = CameraUniform {
@@ -329,7 +324,7 @@ impl RenderState {
                     [0.0, 0.0, 0.0, 1.0],
                 ],
                 camera_pos: [0.0, 0.0],
-                zoom: 0.002,
+                zoom: 0.005,
                 aspect_ratio,
             };
 
@@ -338,13 +333,6 @@ impl RenderState {
                 0,
                 bytemuck::cast_slice(&[camera_uniform]),
             );
-        }
-    }
-
-    fn handle_key(&self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
-        match (code, is_pressed) {
-            (KeyCode::Escape, true) => event_loop.exit(),
-            _ => {}
         }
     }
 
@@ -371,70 +359,23 @@ impl RenderState {
         }
     }
 
-    pub fn render_entities(&mut self, instances: &[EntityInstance]) {
-        self.window.request_redraw();
+    fn update_camera(&self, camera_pos: [f32; 2], zoom: f32) {
+        let aspect_ratio = self.config.width as f32 / self.config.height.max(1) as f32;
 
-        if !self.is_surface_configured || instances.is_empty() {
-            return;
-        }
-
-        self.update(instances);
-
-        let output = match self.surface.get_current_texture() {
-            CurrentSurfaceTexture::Success(texture)
-            | CurrentSurfaceTexture::Suboptimal(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Timeout
-            | wgpu::CurrentSurfaceTexture::Occluded
-            | wgpu::CurrentSurfaceTexture::Validation
-            | wgpu::CurrentSurfaceTexture::Lost => return,
-            wgpu::CurrentSurfaceTexture::Outdated => {
-                self.surface.configure(&self.device, &self.config);
-                return;
-            }
+        let camera = CameraUniform {
+            view_proj: [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            camera_pos,
+            zoom,
+            aspect_ratio,
         };
 
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
-            format: Some(self.config.format),
-            ..Default::default()
-        });
-
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Entity Render Encoder"),
-            });
-
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Entity Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: DARK_THEME.background[0] as f64,
-                            g: DARK_THEME.background[1] as f64,
-                            b: DARK_THEME.background[2] as f64,
-                            a: DARK_THEME.background[3] as f64,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-                multiview_mask: None,
-            });
-
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-            render_pass.draw(0..6, 0..self.num_instances);
-        }
-
-        self.queue.submit(std::iter::once(encoder.finish()));
-        self.queue.present(output);
+        self.queue
+            .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&camera));
     }
 
     pub fn render_entities_with_text(
@@ -442,12 +383,16 @@ impl RenderState {
         entities: &[RenderEntity],
         camera_pos: [f32; 2],
         zoom: f32,
+        stats_text: &str,
+        leaderboard_text: &str,
     ) {
         self.window.request_redraw();
 
         if !self.is_surface_configured || entities.is_empty() {
             return;
         }
+
+        self.update_camera(camera_pos, zoom);
 
         let instances: Vec<EntityInstance> = entities.iter().map(|e| e.instance).collect();
         self.update(&instances);
@@ -537,6 +482,54 @@ impl RenderState {
             }
         }
 
+        self.text_buffer.set_text(
+            stats_text,
+            &Attrs::new().family(glyphon::Family::SansSerif),
+            Shaping::Basic,
+            None,
+        );
+        self.text_buffer
+            .shape_until_scroll(&mut self.font_system, false);
+
+        text_areas.push(TextArea {
+            buffer: &self.text_buffer,
+            left: 20.0,
+            top: 20.0,
+            scale: 1.0,
+            bounds: TextBounds {
+                left: 0,
+                top: 0,
+                right: self.config.width as i32,
+                bottom: self.config.height as i32,
+            },
+            default_color: Color::rgb(255, 255, 255),
+            custom_glyphs: &[],
+        });
+
+        self.leaderboard_buffer.set_text(
+            leaderboard_text,
+            &Attrs::new().family(glyphon::Family::SansSerif),
+            Shaping::Basic,
+            None,
+        );
+        self.leaderboard_buffer
+            .shape_until_scroll(&mut self.font_system, false);
+
+        text_areas.push(TextArea {
+            buffer: &self.leaderboard_buffer,
+            left: screen_w - 600.0,
+            top: 20.0,
+            scale: 1.0,
+            bounds: TextBounds {
+                left: 0,
+                top: 0,
+                right: self.config.width as i32,
+                bottom: self.config.height as i32,
+            },
+            default_color: Color::rgb(255, 255, 255),
+            custom_glyphs: &[],
+        });
+
         let _ = self.text_renderer.prepare(
             &self.device,
             &self.queue,
@@ -596,13 +589,15 @@ impl RenderState {
 pub struct Renderer {
     proxy: Option<EventLoopProxy<RenderState>>,
     state: Option<RenderState>,
+    game_state: Rc<RefCell<GameState>>,
 }
 
 impl Renderer {
-    pub fn new(event_loop: &EventLoop<RenderState>) -> Self {
+    pub fn new(event_loop: &EventLoop<RenderState>, game_state: Rc<RefCell<GameState>>) -> Self {
         Self {
             proxy: Some(event_loop.create_proxy()),
             state: None,
+            game_state,
         }
     }
 
@@ -621,6 +616,23 @@ impl Renderer {
         let screen_y = (1.0 - ndc_y) * (screen_height / 2.0);
 
         (screen_x, screen_y)
+    }
+
+    pub fn screen_to_world(
+        screen_pos: [f32; 2],
+        camera_pos: [f32; 2],
+        zoom: f32,
+        aspect_ratio: f32,
+        screen_width: f32,
+        screen_height: f32,
+    ) -> [f32; 2] {
+        let ndc_x = (screen_pos[0] / (screen_width / 2.0)) - 1.0;
+        let ndc_y = 1.0 - (screen_pos[1] / (screen_height / 2.0));
+
+        let rel_x = ndc_x * aspect_ratio / zoom;
+        let rel_y = ndc_y / zoom;
+
+        [camera_pos[0] + rel_x, camera_pos[1] + rel_y]
     }
 }
 
@@ -652,8 +664,14 @@ impl ApplicationHandler<RenderState> for Renderer {
         let window = Arc::new(event_loop.create_window(window_attribs).unwrap());
 
         if let Some(proxy) = self.proxy.take() {
+            let game_state = Rc::clone(&self.game_state);
+
             spawn_local(async move {
-                assert!(proxy.send_event(RenderState::new(window).await).is_ok())
+                assert!(
+                    proxy
+                        .send_event(RenderState::new(window, game_state).await)
+                        .is_ok()
+                )
             });
         }
     }
@@ -686,60 +704,159 @@ impl ApplicationHandler<RenderState> for Renderer {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
+            WindowEvent::CursorMoved { position, .. } => {
+                let size = state.window.inner_size();
+                if size.width > 0 && size.height > 0 {
+                    let center_x = size.width as f32 / 2.0;
+                    let center_y = size.height as f32 / 2.0;
+
+                    let dx = position.x as f32 - center_x;
+                    let dy = center_y - position.y as f32;
+
+                    let angle = dy.atan2(dx);
+
+                    let mut game = state.game_state.borrow_mut();
+                    game.mouse_angle = Some(angle);
+                    drop(game);
+                }
+            }
             WindowEvent::RedrawRequested => {
-                let camera_pos = [0.0, 0.0];
-                let zoom = 0.002;
+                let game_state = Rc::clone(&state.game_state);
+                let mut game = game_state.borrow_mut();
 
-                let pure_black = [0.0, 0.0, 0.0, 1.0];
+                let labels: Vec<TextComponent> = game
+                    .players
+                    .iter()
+                    .map(|x| TextComponent::new(&mut state.font_system, x.name.as_str()))
+                    .collect();
 
-                let grid_bg = DARK_THEME.background;
-                let grid_line_color = [
-                    DARK_THEME.grid[0],
-                    DARK_THEME.grid[1],
-                    DARK_THEME.grid[2],
-                    DARK_THEME.grid_alpha,
-                ];
+                let current_time = window().unwrap().performance().unwrap().now();
 
-                let text_color = Color::rgb(255, 255, 255);
+                game.bullets
+                    .retain(|b| current_time - b.last_update_time < 500.0);
 
-                let mut player_label =
-                    TextComponent::new(&mut state.font_system, "Player (Circle)");
-                player_label.color = text_color;
-                player_label.set_centered_offset(-160.0);
+                let my_player_id = game.my_player_id;
+                let mouse_angle = game.mouse_angle;
 
-                let mut enemy_label = TextComponent::new(&mut state.font_system, "Enemy (Circle)");
-                enemy_label.color = text_color;
-                enemy_label.set_centered_offset(-160.0);
+                game.players.iter_mut().for_each(|p| {
+                    let time_elapsed = current_time - p.last_update_time;
+                    let alpha = (time_elapsed / 100.0).min(1.0) as f32;
+                    p.render_pos = p.last_pos.lerp(p.pos, alpha as f32);
+                    p.render_health += (p.health as f32 - p.render_health) * 0.1;
 
-                let mut box_label = TextComponent::new(&mut state.font_system, "Box");
-                box_label.color = text_color;
-                box_label.set_centered_offset(-160.0);
+                    if Some(p.id) == my_player_id {
+                        if let Some(target_rot) = mouse_angle {
+                            let mut diff = target_rot - p.render_rot;
+                            if diff > std::f32::consts::PI {
+                                diff -= std::f32::consts::TAU;
+                            }
+                            if diff < -std::f32::consts::PI {
+                                diff += std::f32::consts::TAU;
+                            }
+                            p.render_rot += diff * 0.3;
+                        }
+                    } else {
+                        let mut diff = p.rot - p.last_rot;
+                        if diff > std::f32::consts::PI {
+                            diff -= std::f32::consts::TAU;
+                        }
+                        if diff < -std::f32::consts::PI {
+                            diff += std::f32::consts::TAU;
+                        }
+                        p.render_rot = p.last_rot + diff * alpha;
+                    }
 
-                let mut triangle_label =
-                    TextComponent::new(&mut state.font_system, "Triangle (3-Polygon)");
-                triangle_label.color = text_color;
-                triangle_label.set_centered_offset(-160.0);
+                    if p.dying {
+                        p.render_alpha -= 0.05;
+                    }
+                });
+                game.players.retain(|p| p.render_alpha > 0.0);
 
-                let mut pentagon_label =
-                    TextComponent::new(&mut state.font_system, "Pentagon (5-Polygon)");
-                pentagon_label.color = text_color;
-                pentagon_label.set_centered_offset(-160.0);
+                game.shapes.iter_mut().for_each(|s| {
+                    let time_elapsed = current_time - s.last_update_time;
+                    let alpha = (time_elapsed / 100.0).min(1.0) as f32;
+                    s.render_pos = s.last_pos.lerp(s.pos, alpha as f32);
+                    s.render_health += (s.health as f32 - s.render_health) * 0.1;
 
-                let mut hexagon_label =
-                    TextComponent::new(&mut state.font_system, "Hexagon (6-Polygon)");
-                hexagon_label.color = text_color;
-                hexagon_label.set_centered_offset(-160.0);
+                    let mut diff = s.rot - s.last_rot;
+                    if diff > std::f32::consts::PI {
+                        diff -= std::f32::consts::TAU;
+                    }
+                    if diff < -std::f32::consts::PI {
+                        diff += std::f32::consts::TAU;
+                    }
+                    s.render_rot = s.last_rot + diff * alpha;
 
-                let mut square_label =
-                    TextComponent::new(&mut state.font_system, "Square (4-Polygon)");
-                square_label.color = text_color;
-                square_label.set_centered_offset(-160.0);
+                    if s.dying {
+                        s.render_alpha -= 0.05;
+                    }
+                });
+                game.shapes.retain(|s| s.render_alpha > 0.0);
 
-                let mut trapezoid_label = TextComponent::new(&mut state.font_system, "Trapezoid");
-                trapezoid_label.color = text_color;
-                trapezoid_label.set_centered_offset(-160.0);
+                game.bullets.iter_mut().for_each(|b| {
+                    let time_elapsed = current_time - b.last_update_time;
+                    let alpha = (time_elapsed / 100.0).min(1.0) as f32;
+                    b.render_pos = b.last_pos.lerp(b.pos, alpha as f32);
 
-                let sample_entities = [
+                    let mut diff = b.rot - b.last_rot;
+                    if diff > std::f32::consts::PI {
+                        diff -= std::f32::consts::TAU;
+                    }
+                    if diff < -std::f32::consts::PI {
+                        diff += std::f32::consts::TAU;
+                    }
+                    b.render_rot = b.last_rot + diff * alpha;
+                });
+
+                let entities: Vec<RenderEntity> = game
+                    .players
+                    .iter()
+                    .zip(labels.iter())
+                    .flat_map(|(x, label)| {
+                        let mut renders = Vec::new();
+                        let instances = x.get_render_instances();
+                        let body_idx = instances.len() - 1;
+                        for (i, instance) in instances.iter().enumerate() {
+                            renders.push(RenderEntity {
+                                instance: *instance,
+                                text: if i == body_idx { Some(label) } else { None },
+                            });
+                        }
+                        renders
+                    })
+                    .collect();
+
+                let shape_entities: Vec<RenderEntity> = game
+                    .shapes
+                    .iter()
+                    .flat_map(|s| {
+                        s.get_render_instances()
+                            .iter()
+                            .map(|inst| RenderEntity {
+                                instance: *inst,
+                                text: None,
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect();
+
+                let bullet_entities: Vec<RenderEntity> = game
+                    .bullets
+                    .iter()
+                    .flat_map(|b| {
+                        b.get_render_instances()
+                            .iter()
+                            .map(|inst| RenderEntity {
+                                instance: *inst,
+                                text: None,
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect();
+                const MAP_BOUND: f32 = 2500.0;
+                let border_color = DARK_THEME.maze_walls;
+
+                let mut instances_to_draw: Vec<RenderEntity> = vec![
                     RenderEntity {
                         instance: EntityInstance {
                             position: [0.0, 0.0],
@@ -747,128 +864,259 @@ impl ApplicationHandler<RenderState> for Renderer {
                             rotation: 0.0,
                             shape_type: 2,
                             sides: 0,
-                            fill_color: grid_bg,
-                            border_color: grid_line_color,
-                            border_thickness: 1.0,
-                            extra_param: 32.0,
+                            fill_color: DARK_THEME.background,
+                            border_color: DARK_THEME.grid,
+                            border_thickness: 2.0,
+                            extra_param: 64.0,
                         },
                         text: None,
                     },
                     RenderEntity {
                         instance: EntityInstance {
-                            position: [0.0, 35.0],
-                            size: [30.0, 70.0],
+                            position: [0.0, MAP_BOUND + 25.0],
+                            size: [(MAP_BOUND + 50.0) * 2.0, 50.0],
                             rotation: 0.0,
                             shape_type: 1,
-                            sides: 0,
-                            fill_color: DARK_THEME.barrel,
-                            border_color: pure_black,
-                            border_thickness: 6.0,
-                            extra_param: 1.0,
-                        },
-                        text: None,
-                    },
-                    RenderEntity {
-                        instance: EntityInstance {
-                            position: [0.0, 0.0],
-                            size: [80.0, 80.0],
-                            rotation: 0.0,
-                            shape_type: 0,
-                            sides: 0,
-                            fill_color: DARK_THEME.team_blue,
-                            border_color: pure_black,
-                            border_thickness: 6.0,
-                            extra_param: 1.0,
-                        },
-                        text: Some(&player_label),
-                    },
-                    RenderEntity {
-                        instance: EntityInstance {
-                            position: [300.0, 150.0],
-                            size: [80.0, 80.0],
-                            rotation: 0.0,
-                            shape_type: 0,
-                            sides: 0,
-                            fill_color: DARK_THEME.team_red,
-                            border_color: pure_black,
-                            border_thickness: 6.0,
-                            extra_param: 1.0,
-                        },
-                        text: Some(&enemy_label),
-                    },
-                    RenderEntity {
-                        instance: EntityInstance {
-                            position: [-300.0, 150.0],
-                            size: [80.0, 80.0],
-                            rotation: 0.0,
-                            shape_type: 1,
-                            sides: 0,
-                            fill_color: DARK_THEME.barrel,
-                            border_color: pure_black,
-                            border_thickness: 6.0,
-                            extra_param: 1.0,
-                        },
-                        text: Some(&box_label),
-                    },
-                    RenderEntity {
-                        instance: EntityInstance {
-                            position: [-300.0, -150.0],
-                            size: [80.0, 80.0],
-                            rotation: 0.0,
-                            shape_type: 3,
-                            sides: 3,
-                            fill_color: DARK_THEME.triangle,
-                            border_color: pure_black,
-                            border_thickness: 6.0,
-                            extra_param: 1.0,
-                        },
-                        text: Some(&triangle_label),
-                    },
-                    RenderEntity {
-                        instance: EntityInstance {
-                            position: [0.0, 200.0],
-                            size: [80.0, 80.0],
-                            rotation: 0.0,
-                            shape_type: 3,
                             sides: 4,
-                            fill_color: DARK_THEME.square,
-                            border_color: pure_black,
-                            border_thickness: 6.0,
+                            fill_color: border_color,
+                            border_color,
+                            border_thickness: 0.0,
                             extra_param: 1.0,
                         },
-                        text: Some(&square_label),
+                        text: None,
                     },
                     RenderEntity {
                         instance: EntityInstance {
-                            position: [0.0, -150.0],
-                            size: [80.0, 80.0],
+                            position: [0.0, -MAP_BOUND - 25.0],
+                            size: [(MAP_BOUND + 50.0) * 2.0, 50.0],
                             rotation: 0.0,
-                            shape_type: 3,
-                            sides: 5,
-                            fill_color: DARK_THEME.pentagon,
-                            border_color: pure_black,
-                            border_thickness: 6.0,
+                            shape_type: 1,
+                            sides: 4,
+                            fill_color: border_color,
+                            border_color,
+                            border_thickness: 0.0,
                             extra_param: 1.0,
                         },
-                        text: Some(&pentagon_label),
+                        text: None,
                     },
                     RenderEntity {
                         instance: EntityInstance {
-                            position: [300.0, -150.0],
-                            size: [80.0, 80.0],
+                            position: [MAP_BOUND + 25.0, 0.0],
+                            size: [50.0, (MAP_BOUND + 50.0) * 2.0],
                             rotation: 0.0,
-                            shape_type: 3,
-                            sides: 6,
-                            fill_color: DARK_THEME.crashers,
-                            border_color: pure_black,
-                            border_thickness: 6.0,
+                            shape_type: 1,
+                            sides: 4,
+                            fill_color: border_color,
+                            border_color,
+                            border_thickness: 0.0,
                             extra_param: 1.0,
                         },
-                        text: Some(&hexagon_label),
+                        text: None,
+                    },
+                    RenderEntity {
+                        instance: EntityInstance {
+                            position: [-MAP_BOUND - 25.0, 0.0],
+                            size: [50.0, (MAP_BOUND + 50.0) * 2.0],
+                            rotation: 0.0,
+                            shape_type: 1,
+                            sides: 4,
+                            fill_color: border_color,
+                            border_color,
+                            border_thickness: 0.0,
+                            extra_param: 1.0,
+                        },
+                        text: None,
                     },
                 ];
 
-                state.render_entities_with_text(&sample_entities, camera_pos, zoom);
+                instances_to_draw.extend(bullet_entities);
+                instances_to_draw.extend(shape_entities.clone());
+                instances_to_draw.extend(entities.clone());
+
+                for p in game.players.iter() {
+                    if p.dying {
+                        continue;
+                    }
+                    let bar_width = 40.0 * p.scale;
+                    let bar_height = 6.0 * p.scale;
+                    let bar_y = p.render_pos.y - 30.0 * p.scale;
+
+                    let health_percent = (p.render_health / p.max_health as f32).max(0.0).min(1.0);
+                    let fg_width = bar_width * health_percent;
+                    let fg_x = p.render_pos.x - bar_width * 0.5 + fg_width * 0.5;
+
+                    instances_to_draw.push(RenderEntity {
+                        instance: EntityInstance {
+                            position: [p.render_pos.x, bar_y],
+                            size: [bar_width, bar_height],
+                            rotation: 0.0,
+                            shape_type: 4,
+                            sides: 4,
+                            fill_color: DARK_THEME.health_bar_background,
+                            border_color: [0.0, 0.0, 0.0, 0.0],
+                            border_thickness: 0.0,
+                            extra_param: 0.3,
+                        },
+                        text: None,
+                    });
+
+                    if fg_width > 0.1 {
+                        instances_to_draw.push(RenderEntity {
+                            instance: EntityInstance {
+                                position: [fg_x, bar_y],
+                                size: [fg_width, bar_height],
+                                rotation: 0.0,
+                                shape_type: 4,
+                                sides: 4,
+                                fill_color: DARK_THEME.health_bar_foreground,
+                                border_color: [0.0, 0.0, 0.0, 0.0],
+                                border_thickness: 0.0,
+                                extra_param: 0.3,
+                            },
+                            text: None,
+                        });
+                    }
+                }
+
+                for s in game.shapes.iter() {
+                    if s.dying {
+                        continue;
+                    }
+                    let bar_width = s.size * 0.6;
+                    let bar_height = 4.0;
+                    let bar_y = s.render_pos.y - s.size * 0.5;
+
+                    let health_percent = (s.render_health / s.max_health as f32).max(0.0).min(1.0);
+                    let fg_width = bar_width * health_percent;
+                    let fg_x = s.render_pos.x - bar_width * 0.5 + fg_width * 0.5;
+
+                    instances_to_draw.push(RenderEntity {
+                        instance: EntityInstance {
+                            position: [s.render_pos.x, bar_y],
+                            size: [bar_width, bar_height],
+                            rotation: 0.0,
+                            shape_type: 4,
+                            sides: 4,
+                            fill_color: DARK_THEME.health_bar_background,
+                            border_color: [0.0, 0.0, 0.0, 0.0],
+                            border_thickness: 0.0,
+                            extra_param: 0.5,
+                        },
+                        text: None,
+                    });
+
+                    if fg_width > 0.1 {
+                        instances_to_draw.push(RenderEntity {
+                            instance: EntityInstance {
+                                position: [fg_x, bar_y],
+                                size: [fg_width, bar_height],
+                                rotation: 0.0,
+                                shape_type: 4,
+                                sides: 4,
+                                fill_color: DARK_THEME.health_bar_foreground,
+                                border_color: [0.0, 0.0, 0.0, 0.0],
+                                border_thickness: 0.0,
+                                extra_param: 0.5,
+                            },
+                            text: None,
+                        });
+                    }
+                }
+
+                let screen_w = state.config.width as f32;
+                let screen_h = state.config.height as f32;
+                let aspect_ratio = screen_w / screen_h.max(1.0);
+                let my_player_scale = game.my_player().map(|p| p.scale).unwrap_or(1.0);
+
+                let target_zoom = 0.005 / my_player_scale;
+                state.render_zoom += (target_zoom - state.render_zoom) * 0.1;
+                let zoom = state.render_zoom;
+
+                let camera_pos = game
+                    .my_player()
+                    .map(|p| p.render_pos.to_array())
+                    .unwrap_or([0.0, 0.0]);
+
+                let xp_bar_width_px = screen_w * 0.5;
+                let xp_bar_height_px = 20.0;
+                let xp_bar_x_px = screen_w * 0.5;
+                let xp_bar_y_px = screen_h - 40.0;
+
+                let xp_bar_world = Renderer::screen_to_world(
+                    [xp_bar_x_px, xp_bar_y_px],
+                    camera_pos,
+                    zoom,
+                    aspect_ratio,
+                    screen_w,
+                    screen_h,
+                );
+                let xp_bar_world_w = (xp_bar_width_px / (screen_w / 2.0)) * aspect_ratio / zoom;
+                let xp_bar_world_h = (xp_bar_height_px / (screen_h / 2.0)) / zoom;
+
+                instances_to_draw.push(RenderEntity {
+                    instance: EntityInstance {
+                        position: xp_bar_world,
+                        size: [xp_bar_world_w, xp_bar_world_h],
+                        rotation: 0.0,
+                        shape_type: 4,
+                        sides: 4,
+                        fill_color: DARK_THEME.bar_background,
+                        border_color: [0.0, 0.0, 0.0, 0.0],
+                        border_thickness: 0.0,
+                        extra_param: 0.5,
+                    },
+                    text: None,
+                });
+
+                let xp_percent = if game.xp_to_next > 0 {
+                    game.xp as f32 / game.xp_to_next as f32
+                } else {
+                    0.0
+                };
+                let fg_w = xp_bar_world_w * xp_percent;
+                let fg_x = xp_bar_world[0] - xp_bar_world_w * 0.5 + fg_w * 0.5;
+
+                if fg_w > 0.0 {
+                    instances_to_draw.push(RenderEntity {
+                        instance: EntityInstance {
+                            position: [fg_x, xp_bar_world[1]],
+                            size: [fg_w, xp_bar_world_h],
+                            rotation: 0.0,
+                            shape_type: 4,
+                            sides: 4,
+                            fill_color: DARK_THEME.xp_bar_fill,
+                            border_color: [0.0, 0.0, 0.0, 0.0],
+                            border_thickness: 0.0,
+                            extra_param: 0.5,
+                        },
+                        text: None,
+                    });
+                }
+
+                let stats_text = format!(
+                    "Lvl {} | XP: {}/{} | HP: {}/{}",
+                    game.level, game.xp, game.xp_to_next, game.health, game.max_health
+                );
+
+                let mut lb_text = String::from("Leaderboard\n");
+                for (i, (name, xp)) in game.leaderboard.iter().enumerate() {
+                    let xp_str = if *xp >= 1000 {
+                        format!("{:.1}k", *xp as f32 / 1000.0)
+                    } else {
+                        format!("{}", xp)
+                    };
+                    lb_text.push_str(&format!("{}. {} - {}\n", i + 1, name, xp_str));
+                }
+
+                drop(game);
+
+                state.render_entities_with_text(
+                    &instances_to_draw,
+                    camera_pos,
+                    zoom,
+                    &stats_text,
+                    &lb_text,
+                );
             }
             WindowEvent::KeyboardInput {
                 event:
@@ -878,7 +1126,31 @@ impl ApplicationHandler<RenderState> for Renderer {
                         ..
                     },
                 ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed()),
+            } => {
+                let pressed = key_state.is_pressed();
+                let mut game = state.game_state.borrow_mut();
+
+                match code {
+                    KeyCode::KeyW | KeyCode::ArrowUp => {
+                        game.move_up = pressed;
+                    }
+                    KeyCode::KeyS | KeyCode::ArrowDown => {
+                        game.move_down = pressed;
+                    }
+                    KeyCode::KeyA | KeyCode::ArrowLeft => {
+                        game.move_left = pressed;
+                    }
+                    KeyCode::KeyD | KeyCode::ArrowRight => {
+                        game.move_right = pressed;
+                    }
+                    KeyCode::Space => {
+                        game.auto_fire = pressed;
+                    }
+                    _ => {}
+                }
+
+                game.update_movement_dir();
+            }
             _ => {}
         }
     }
@@ -904,7 +1176,7 @@ impl TextComponent {
 
         let mut component = Self {
             buffer,
-            color: Color::rgb(0, 0, 0),
+            color: Color::rgb(255, 255, 255),
             offset: [0.0, 0.0],
         };
 

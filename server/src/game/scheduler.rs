@@ -32,7 +32,7 @@ impl Scheduler {
         let result: Option<f64> = thread.resume(args)?;
 
         if thread.status() == ThreadStatus::Resumable {
-            let ticks = (result.unwrap_or(0.0) * 10.0) as u64; // 100ms ticks
+            let ticks = (result.unwrap_or(0.0) * 10.0) as u64;
             self.pending.push((thread, self.tick + ticks));
         }
 

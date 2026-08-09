@@ -13,7 +13,9 @@ use std::sync::Arc;
 use ed25519_dalek::SigningKey;
 use futures_util::{SinkExt, StreamExt};
 use shared::packets::{
-    PACKET_SEED, Packet, handshake::HandshakePacket, server_bound::SpawnReqPacket,
+    PACKET_SEED, Packet,
+    handshake::HandshakePacket,
+    server_bound::{AimPacket, AutoFirePacket, MovementPacket, SpawnReqPacket},
 };
 use tokio::{net::TcpListener, sync::mpsc::unbounded_channel};
 use tokio_tungstenite::{accept_async_with_config, tungstenite::protocol::WebSocketConfig};
@@ -226,6 +228,34 @@ async fn main() {
                             }
                             Err(_) => {
                                 log!("failed to decode SpawnReqPacket from {id}");
+                            }
+                        },
+                        4 => match MovementPacket::decode(&plaintext) {
+                            Ok(MovementPacket { dir, .. }) => {
+                                let _ =
+                                    game_channel_send.send(GameEvents::PlayerMovement { id, dir });
+                            }
+                            Err(_) => {
+                                log!("failed to decode MovementPacket from {id}");
+                            }
+                        },
+
+                        6 => match AutoFirePacket::decode(&plaintext) {
+                            Ok(AutoFirePacket { enabled, .. }) => {
+                                let _ = game_channel_send
+                                    .send(GameEvents::PlayerAutoFire { id, enabled });
+                            }
+                            Err(_) => {
+                                log!("failed to decode AutoFirePacket from {id}");
+                            }
+                        },
+
+                        5 => match AimPacket::decode(&plaintext) {
+                            Ok(AimPacket { dir, .. }) => {
+                                let _ = game_channel_send.send(GameEvents::PlayerAim { id, dir });
+                            }
+                            Err(_) => {
+                                log!("failed to decode AimPacket from {id}");
                             }
                         },
 

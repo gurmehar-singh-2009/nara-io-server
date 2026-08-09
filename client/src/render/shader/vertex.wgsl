@@ -53,7 +53,8 @@ fn vs_main(
 
     let cos_r = cos(instance.rotation);
     let sin_r = sin(instance.rotation);
-    let rot_mat = mat2x2<f32>(cos_r, -sin_r, sin_r, cos_r);
+
+    let rot_mat = mat2x2<f32>(cos_r, sin_r, -sin_r, cos_r);
 
     let local_scaled = local_position * (instance.size * 0.5);
     let rotated_pos = rot_mat * local_scaled;

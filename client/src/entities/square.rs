@@ -1,23 +1,78 @@
-use crate::{entities::Entity, render::buffers::EntityInstance};
+use crate::{
+    entities::Entity,
+    render::{buffers::EntityInstance, colours::DARK_THEME},
+};
 
-struct Square {
-    pub x: f32,
-    pub y: f32,
+pub struct Shape {
+    pub id: u32,
+    pub pos: glam::Vec2,
+    pub last_pos: glam::Vec2,
+    pub render_pos: glam::Vec2,
     pub rot: f32,
+    pub last_rot: f32,
+    pub render_rot: f32,
+    pub last_update_time: f64,
+    pub sides: u32,
+    pub fill_color: [f32; 4],
+    pub size: f32,
+    pub health: u32,
+    pub max_health: u32,
+    pub render_health: f32,
+    pub dying: bool,
+    pub render_alpha: f32,
 }
 
-impl Entity for Square {
-    fn get_render_instance(&self) -> crate::render::buffers::EntityInstance {
-        EntityInstance {
-            position: [self.x, self.y],
-            size: [40., 40.],
-            rotation: self.rot,
-            shape_type: 1,
-            sides: 4,
-            fill_color: [1., 0., 0., 1.],
-            border_color: [0., 1., 0., 1.],
-            border_thickness: 4.,
-            extra_param: 1.,
+impl Shape {
+    pub fn new(id: u32, x: f32, y: f32, kind: u32) -> Self {
+        let pos = glam::Vec2::new(x, y);
+        let (sides, fill_color, size, max_health) = match kind {
+            2 => (3, DARK_THEME.triangle, 40.0, 30),
+            3 => (5, DARK_THEME.pentagon, 60.0, 100),
+            _ => (4, DARK_THEME.square, 40.0, 10),
+        };
+        Self {
+            id,
+            pos,
+            last_pos: pos,
+            render_pos: pos,
+            rot: 0.0,
+            last_rot: 0.0,
+            render_rot: 0.0,
+            last_update_time: 0.0,
+            sides,
+            fill_color,
+            size,
+            health: max_health,
+            max_health,
+            render_health: max_health as f32,
+            dying: false,
+            render_alpha: 1.0,
         }
+    }
+}
+
+impl Entity for Shape {
+    fn get_render_instances(&self) -> Vec<EntityInstance> {
+        vec![EntityInstance {
+            position: [self.render_pos.x, self.render_pos.y],
+            size: [self.size, self.size],
+            rotation: self.render_rot,
+            shape_type: 3,
+            sides: self.sides,
+            fill_color: [
+                self.fill_color[0],
+                self.fill_color[1],
+                self.fill_color[2],
+                self.fill_color[3] * self.render_alpha,
+            ],
+            border_color: [
+                DARK_THEME.border[0],
+                DARK_THEME.border[1],
+                DARK_THEME.border[2],
+                DARK_THEME.border[3] * self.render_alpha,
+            ],
+            border_thickness: 3.0,
+            extra_param: 1.,
+        }]
     }
 }

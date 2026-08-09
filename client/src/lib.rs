@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use ed25519_dalek::VerifyingKey;
 use futures::{SinkExt, StreamExt};
@@ -15,7 +15,7 @@ mod socket;
 #[cfg(target_arch = "wasm32")]
 use tokio_with_wasm::alias as tokio;
 
-use crate::{render::renderer::Renderer, socket::Socket};
+use crate::{render::renderer::Renderer, socket::Socket, structs::game_state::GameState};
 
 const PUBLIC_KEY_BYTES: &[u8; 32] = include_bytes!("../public_key.bin");
 
@@ -31,12 +31,37 @@ pub async fn start() {
     console_error_panic_hook::set_once();
     console_log::init_with_level(log::Level::Info).unwrap_throw();
 
-    // let socket = Socket::new("ws://127.0.0.1:8080".to_string()).await;
     let window = window().unwrap();
+    let game_state = Rc::new(RefCell::new(GameState {
+        my_player_id: None,
+        players: vec![],
+        shapes: vec![],
+        bullets: vec![],
 
-    let closure = Closure::<dyn FnMut()>::new(|| {
-        spawn_local(async {
-            Socket::new("ws://127.0.0.1:8080".into()).await;
+        movement_dir: None,
+        mouse_angle: None,
+        auto_fire: false,
+
+        move_up: false,
+        move_down: false,
+        move_left: false,
+        move_right: false,
+
+        level: 1,
+        xp: 0,
+        xp_to_next: 250,
+        health: 100,
+        max_health: 100,
+
+        leaderboard: vec![],
+    }));
+    let game_state_for_socket = Rc::clone(&game_state);
+
+    let closure = Closure::<dyn FnMut()>::new(move || {
+        let game_state = Rc::clone(&game_state_for_socket);
+
+        spawn_local(async move {
+            Socket::new(game_state, "ws://127.0.0.1:8080".into()).await;
         });
     });
 
@@ -49,6 +74,7 @@ pub async fn start() {
     closure.forget();
 
     let event_loop = EventLoop::with_user_event().build().unwrap();
-    let render = Renderer::new(&event_loop);
+    let render = Renderer::new(&event_loop, Rc::clone(&game_state));
+
     event_loop.spawn_app(render);
 }

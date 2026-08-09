@@ -5,7 +5,12 @@ use snafu::ResultExt;
 use crate::{
     errors::{DecodeSnafu, InvalidByteSizeSnafu, SharedError},
     packets::{
-        client_bound::AddEntityPacket, handshake::HandshakePacket, server_bound::SpawnReqPacket,
+        client_bound::{
+            AddEntityPacket, LeaderboardPacket, PlayerStatsPacket, RemoveEntityPacket,
+            UpdateEntityPacket,
+        },
+        handshake::HandshakePacket,
+        server_bound::{AimPacket, AutoFirePacket, MovementPacket, SpawnReqPacket},
     },
 };
 
@@ -155,4 +160,11 @@ register_packets! {
     (0, HandshakePacket),
     (1, SpawnReqPacket),
     (2, AddEntityPacket),
+    (3, UpdateEntityPacket),
+    (4, MovementPacket),
+    (5, AimPacket),
+    (6, AutoFirePacket),
+    (7, PlayerStatsPacket),
+    (8, RemoveEntityPacket),
+    (9, LeaderboardPacket),
 }

@@ -11,7 +11,7 @@ use mlua::{Function, Lua};
 use crate::{
     entities::{entity::Entities, tank::Tanks},
     game::{game_state::GameEvents, scheduler::Scheduler},
-    scripting::registery::{WeaponRegistry, register_commands, register_events},
+    scripting::registery::{TankRegistry, WeaponRegistry, register_commands, register_events},
 };
 
 const PRELUDE: &str = "function wait(seconds) return coroutine.yield(seconds) end";
@@ -19,7 +19,7 @@ const PRELUDE: &str = "function wait(seconds) return coroutine.yield(seconds) en
 pub struct Scripting {
     pub lua: Lua,
     pub weapons: WeaponRegistry,
-    pub tanks: Option<()>,
+    pub tanks: TankRegistry,
     pub abilities: Option<()>,
     pub commands: Arc<Mutex<HashMap<String, Function>>>,
     pub scheduler: Scheduler,
@@ -62,6 +62,7 @@ impl Scripting {
         let commands_path = base_path.join("commands.lua");
 
         let weapons = WeaponRegistry::load_all(&lua, weapons_path.to_str().unwrap())?;
+        let tanks = TankRegistry::load_all(&lua, base_path.join("tanks").to_str().unwrap())?;
 
         let commands_code = std::fs::read_to_string(&commands_path).map_err(|e| {
             mlua::Error::external(format!("Failed to read {:?}: {}", commands_path, e))
@@ -78,7 +79,7 @@ impl Scripting {
         Ok(Self {
             lua,
             weapons,
-            tanks: None,
+            tanks,
             abilities: None,
             commands,
             scheduler: Scheduler::default(),

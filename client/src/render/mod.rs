@@ -1,3 +1,3 @@
 pub mod buffers;
-mod colours;
+pub mod colours;
 pub mod renderer;
