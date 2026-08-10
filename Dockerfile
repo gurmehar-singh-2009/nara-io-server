@@ -1,32 +1,36 @@
 # Use official Rust image as builder
-FROM rust:1.75-slim as builder
+FROM rust:1.85-slim AS builder
+
+# Install build dependencies (INCLUDING cmake, make, perl for aws-lc-sys)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    build-essential \
+    cmake \
+    perl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /app
 
-# Copy Cargo.toml and Cargo.lock to cache dependencies
-COPY Cargo.toml Cargo.lock ./
-
-# Create dummy src/main.rs to cache dependencies
-RUN mkdir src && \
-    echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
-    rm -rf target/release/deps/your_project_name*
-
-# Copy actual source code
+# Copy entire workspace
 COPY . .
 
-# Build the actual binary
-RUN cargo build --release
+# Build the server binary
+RUN cargo build --release -p server
 
-# Use distroless or minimal image (no OpenSSL needed)
-FROM gcr.io/distroless/cc-debian12
+# Runtime stage
+FROM debian:bookworm-slim
 
-# Copy binary from builder
-COPY --from=builder /app/target/release/your_binary_name /app
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Expose WebSocket port
+# Copy the server binary
+COPY --from=builder /app/target/release/server /usr/local/bin/app
+
 EXPOSE 8080
-
-# Run the binary
-CMD ["/app"]
+CMD ["app"]
