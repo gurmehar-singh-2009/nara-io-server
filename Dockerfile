@@ -17,6 +17,9 @@ WORKDIR /app
 # Copy entire workspace
 COPY . .
 
+# Create the client directory if it doesn't exist (required by server/build.rs)
+RUN mkdir -p client
+
 # Build the server binary
 RUN cargo build --release -p server
 
