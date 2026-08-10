@@ -50,7 +50,7 @@ pub fn get_server_signing_key() -> SigningKey {
 
 #[tokio::main]
 async fn main() {
-    let addr = "127.0.0.1:8080".to_string();
+    let addr = "0.0.0.0:8080".to_string();
     let socket_config = WebSocketConfig::default()
         .max_message_size(Some(4096))
         .max_frame_size(Some(1024));
